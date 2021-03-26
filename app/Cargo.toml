@@ -1,0 +1,42 @@
+[package]
+authors = ["Tim Blakely <tim.blakely@gmail.com>"]
+edition = "2018"
+readme = "README.md"
+name = "app"
+version = "0.1.0"
+
+[dependencies]
+cortex-m = "0.6.0"
+cortex-m-rt = "0.6.10"
+cortex-m-semihosting = "0.3.3"
+# panic-halt = "0.2.0"
+
+# Uncomment for the panic example.
+panic-itm = {version = "0.4.2", optional = true}
+
+[features]
+default = ["panic-itm"]
+
+
+
+[dependencies.stm32g4]
+default-features = false
+features = ["stm32g474", "rt"]
+version = "0.13.0"
+
+
+# Uncomment for the allocator example.
+# alloc-cortex-m = "0.4.0"
+
+# Uncomment for the device example.
+# Update `memory.x`, set target to `thumbv7em-none-eabihf` in `.cargo/config`,
+# and then use `cargo build --examples device` to build it.
+# [dependencies.stm32f3]
+# features = ["stm32f303", "rt"]
+# version = "0.7.1"
+
+# this lets you use `cargo fix`!
+[[bin]]
+name = "app"
+test = false
+bench = false
