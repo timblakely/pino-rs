@@ -13,7 +13,8 @@ _**Disclaimer: I'm quite new at Rust, so please bear with me**_
 
 This repository is currently a continuously changing, seething mess as I flail
 around learning Rust. You're welcome to browse around the code, but please don't
-expect proper, idiomatic Rust code just yet. For that I'd suggest the following
+expect proper, idiomatic Rust code just yet... or it to even work at all, for
+that matter :stuck_out_tongue_winking_eye: For that I'd suggest the following
 resources:
 
 - [The Rust Book](https://doc.rust-lang.org/book/) - Seriously, read it "cover to cover" as it were. Coming from >15 years of C++ I debated whether it was worth reading the absolute basics, but I ended up going through it all and don't regret it one bit. 

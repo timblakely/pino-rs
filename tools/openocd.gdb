@@ -1,7 +1,5 @@
 target extended-remote :3333
 
-monitor arm semihosting enable
-
 # TODO(blakely): Is this necessary when using cortex-debug?
 set print asm-demangle on
 

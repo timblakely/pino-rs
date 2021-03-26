@@ -30,66 +30,17 @@
                 "source": "probe",
                 "decoders": [
                     { "type": "console", "label": "ITM", "port": 0 }
-                ]
-            },
-            "openOCDLaunchCommands": ["adapter speed 24000"],
-            // "serverArgs": ["-s", ".", "-f tools/openocd.cfg"],
-            // "preLaunchCommands": [
-            //     "monitor arm semihosting enable"
-            // ],
-            // "preLaunchCommands": [
-            //     "source ./tools/openocd.gdb"
-            // ],
-            "debuggerArgs": ["-s", "./tools/openocd.gdb"]
-        },{
-            "name": "BLDC debug",
-            "type": "cortex-debug",
-            "preLaunchTask": "Build BLDC devboard (Debug)",
-            "request": "launch",
-            "servertype": "openocd",
-            "cwd": "${workspaceRoot}",
-            "executable": "${workspaceRoot}/bazel-bin/bldc/firmware/main",
-            "device": "STM32G474RE",
-            "configFiles": [
-                "${workspaceRoot}/bldc/firmware/tools/openocd/stm32g474re.cfg",
-            ],
-            // "svdFile":"/usr/local/google/home/blakely/STM32Cube/STM32G4_svd/STM32G4_svd_V1.0/STM32G474xx.svd",
-            "svdFile": "${workspaceRoot}/third_party/stm32cubeg4/STM32G474xx.svd",
-            // "openOCDLaunchCommands": [
-            //   "init",
-            //   "reset init",
-            // ],
-            "preLaunchCommands": [
-                "directory ${workspaceRoot}/bazel-pino"
-            ],
-            // "postStartSessionCommands": [
-            //   "continue",
-            // ],
-            // "runToMain": true,
-            // "showDevDebugOutput": true,
-            "demangle": true,
-            // Example https://wiki.octanis.org/stm32/vscode#using_the_swo_pin_debugging_with_graphics
-            // "swoConfig":{
-            //   "enabled":true,
-            //   "source":"probe",
-            //   "swoFrequency": 24000000,
-            //   "cpuFrequency":170000000,
-            //   "decoders": [
-            //     // {
-            //     //   "port": 0,
-            //     //   "type": "console",
-            //     //   "label": "SWO output",
-            //     //   "encoding":"ascii"
-            //     // },
-            //     {
-            //       "port": 0,
-            //       "type": "graph",
-            //       "encoding": "signed",
-            //       "graphId": "data1",
-            //       "scale": 0.016
-            //     }
-            //   ]
-            // },
+
+                // Example https://wiki.octanis.org/stm32/vscode#using_the_swo_pin_debugging_with_graphics
+                //   {
+                //     "port": 0,
+                //     "type": "graph",
+                //     "encoding": "signed",
+                //     "graphId": "data1",
+                //     "scale": 0.016
+                //   }
+              ]
+            // Example for graphing data written out the ITM port
             // "graphConfig": [
             //   {
             //     "label": "VBAT",
@@ -106,6 +57,9 @@
             //     ]
             //   }
             // ]
+            },
+            "openOCDLaunchCommands": ["adapter speed 24000"],
+            "debuggerArgs": ["-s", "./tools/openocd.gdb"]
         }
     ]
 }

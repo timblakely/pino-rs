@@ -1,13 +1,8 @@
 #![no_std]
 #![no_main]
 
-use core::borrow::BorrowMut;
-
-// use panic_abort as _; // requires nightly
-
 use cortex_m::{peripheral::syst, Peripherals};
 use cortex_m_rt::entry;
-use cortex_m_semihosting::hprintln;
 
 use stm32g4::stm32g474 as device;
 
