@@ -2,7 +2,7 @@
 authors = ["Tim Blakely <tim.blakely@gmail.com>"]
 edition = "2018"
 readme = "README.md"
-name = "app"
+name = "bldc"
 version = "0.1.0"
 
 [dependencies]
@@ -40,6 +40,6 @@ path = "../../stm32-rs/stm32g4"
 
 # this lets you use `cargo fix`!
 [[bin]]
-name = "app"
+name = "bldc"
 test = false
 bench = false

@@ -7,7 +7,7 @@ use cortex_m_rt::entry;
 
 use stm32g4::stm32g474 as device;
 
-use app::util::stm32;
+use bldc::util::stm32;
 
 #[cfg(feature = "panic-itm")]
 use panic_itm as _;

@@ -14,7 +14,7 @@
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "Cargo Build (debug)",
             "runToMain": true,
-            "executable": "./target/thumbv7em-none-eabihf/debug/app",
+            "executable": "./target/thumbv7em-none-eabihf/debug/bldc",
             /* Run `cargo build --example itm` and uncomment this line to run itm example */
             // "executable": "./target/thumbv7em-none-eabihf/debug/examples/itm",
             "device": "STM32G474RE",
@@ -69,7 +69,7 @@
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "Cargo Build (release)",
             "runToMain": true,
-            "executable": "./target/thumbv7em-none-eabihf/release/app",
+            "executable": "./target/thumbv7em-none-eabihf/release/bldc",
             /* Run `cargo build --example itm` and uncomment this line to run itm example */
             // "executable": "./target/thumbv7em-none-eabihf/debug/examples/itm",
             "device": "STM32G474RE",

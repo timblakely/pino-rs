@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "app",
+  "bldc",
 ]
 
 [profile.release]
