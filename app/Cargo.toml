@@ -22,7 +22,10 @@ default = ["panic-itm"]
 [dependencies.stm32g4]
 default-features = false
 features = ["stm32g474", "rt"]
-version = "0.13.0"
+# version = "0.13.0"
+# I've got some local modifications to the stm32-rs repo that I intend to push
+# upstream. Until then, use my local version.
+path = "../../stm32-rs/stm32g4"
 
 
 # Uncomment for the allocator example.

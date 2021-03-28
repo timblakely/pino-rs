@@ -25,6 +25,61 @@
             "svdFile": "${workspaceRoot}/tools/STM32G474xx.svd",
             "swoConfig": {
                 "enabled": true,
+                "cpuFrequency": 170000000,
+                "swoFrequency": 24000000,
+                "source": "probe",
+                "decoders": [
+                    { "type": "console", "label": "ITM", "port": 0 }
+
+                // Example https://wiki.octanis.org/stm32/vscode#using_the_swo_pin_debugging_with_graphics
+                //   {
+                //     "port": 0,
+                //     "type": "graph",
+                //     "encoding": "signed",
+                //     "graphId": "data1",
+                //     "scale": 0.016
+                //   }
+              ]
+            // Example for graphing data written out the ITM port
+            // "graphConfig": [
+            //   {
+            //     "label": "VBAT",
+            //     "type": "realtime",
+            //     "maximum": 28,
+            //     "minimum": 20,
+            //     "timespan": 10,
+            //     "plots": [
+            //       {
+            //           "label": "dcVBAT",
+            //           "graphId": "data1",
+            //           "color": "#8A2BE2"
+            //       }
+            //     ]
+            //   }
+            // ]
+            },
+            "openOCDLaunchCommands": ["adapter speed 24000"],
+            "debuggerArgs": ["-s", "./tools/openocd.gdb"]
+        },
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "name": "RELEASE (OpenOCD)",
+            "servertype": "openocd",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "Cargo Build (release)",
+            "runToMain": true,
+            "executable": "./target/thumbv7em-none-eabihf/release/app",
+            /* Run `cargo build --example itm` and uncomment this line to run itm example */
+            // "executable": "./target/thumbv7em-none-eabihf/debug/examples/itm",
+            "device": "STM32G474RE",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "./tools/stm32g4x_custom.cfg"
+            ],
+            "svdFile": "${workspaceRoot}/tools/STM32G474xx.svd",
+            "swoConfig": {
+                "enabled": true,
                 "cpuFrequency": 16000000,
                 "swoFrequency": 16000000,
                 "source": "probe",
