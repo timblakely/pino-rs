@@ -5,7 +5,7 @@
 // use cortex_m::{peripheral::syst, peripheral::ITM, Peripherals};
 use cortex_m_rt::entry;
 
-use bldc::comms::fdcan::{ExtendedFilterMode, ExtendedFilterType, Fdcan};
+use bldc::comms::fdcan::Sram;
 use bldc::driver;
 
 #[cfg(feature = "panic-itm")]
@@ -30,14 +30,19 @@ fn main() -> ! {
 
     let _foo = driver::take_hardware();
 
-    let fdcan = Fdcan::new();
-    let asdf = fdcan.extended_filters.filter(0);
-    asdf.set(
-        ExtendedFilterMode::StoreRxFIFO0,
-        ExtendedFilterType::Dual,
-        0x3,
-        0x7,
-    );
+    // let fdcan = Fdcan::new();
+    // let asdf = fdcan.extended_filters.filter(0);
+    // asdf.set(
+    //     ExtendedFilterMode::StoreRxFIFO0,
+    //     ExtendedFilterType::Dual,
+    //     0x3,
+    //     0x7,
+    // );
+
+    let mut test = &Sram::take();
+
+    let asdf = &test.standard_filters[0];
+    let foo = asdf.read().sft();
 
     // let mut systick = cortex_peripherals.SYST;
 
