@@ -47,6 +47,7 @@ dependencies = [
  "cortex-m-semihosting",
  "panic-itm",
  "stm32g4",
+ "vcell",
 ]
 
 [[package]]

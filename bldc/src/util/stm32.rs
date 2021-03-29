@@ -25,15 +25,17 @@ pub struct G4ClockConfig {
     pub apb2_divisor: device::rcc::cfgr::PPRE2_A,      // APB2 prescalar
 }
 
-// The g4 starts up in 16MHz using the internal oscillator. This function goes
-// through the process of enabling boost voltasges, enabling the high-speed
-// external clock domain, disabling the high-speed internal, and finally
-// configuring the PLL, stepping up clock speeds in two stages to avoid locking
-// the AHB bus by switching over to a clock signal that's too fast to sync to.
+/// Configure the various clocks
+///
+/// The g4 starts up in 16MHz using the internal oscillator. This function goes
+/// through the process of enabling boost voltasges, enabling the high-speed
+/// external clock domain, disabling the high-speed internal, and finally
+/// configuring the PLL, stepping up clock speeds in two stages to avoid locking
+/// the AHB bus by switching over to a clock signal that's too fast to sync to.
 pub fn clock_setup(
-    pwr: &mut device::PWR,
-    rcc: &mut device::RCC,
-    flash: &mut device::FLASH,
+    pwr: &device::PWR,
+    rcc: &device::RCC,
+    flash: &device::FLASH,
     cfg: &G4ClockConfig,
 ) {
     use device::{flash, rcc};
@@ -138,4 +140,11 @@ pub mod clocks {
         apb1_divisor: cfgr::PPRE1_A::DIV1,
         apb2_divisor: cfgr::PPRE2_A::DIV1,
     };
+}
+
+// Disable dead battery pull down first thing. Almost certainly not necessary
+// since it doesn't seem to do anything without the USBDEN bit set in
+// RCC.APB1EN, but everything from STM32CubeMX does it so why not?
+pub fn disable_dead_battery_pd(pwr: &device::PWR) {
+    pwr.cr3.modify(|_, w| w.ucpd1_dbdis().bit(true));
 }
