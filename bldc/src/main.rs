@@ -7,6 +7,7 @@ use cortex_m_rt::entry;
 
 use bldc::comms::fdcan::Sram;
 use bldc::driver;
+use stm32g4::stm32g474 as device;
 
 #[cfg(feature = "panic-itm")]
 use panic_itm as _;
@@ -19,7 +20,7 @@ use panic_itm as _;
 #[entry]
 fn main() -> ! {
     // let cortex_peripherals = Peripherals::take().unwrap();
-    // let mut g4 = device::Peripherals::take().unwrap();
+    let mut g4 = device::Peripherals::take().unwrap();
 
     // stm32::clock_setup(
     //     &mut g4.PWR,
@@ -39,10 +40,10 @@ fn main() -> ! {
     //     0x7,
     // );
 
-    let mut test = &Sram::take();
+    let test = &Sram::take();
 
     let asdf = &test.standard_filters[0];
-    let foo = asdf.read().sft();
+    asdf.modify(|_, w| w.sft().classic());
 
     // let mut systick = cortex_peripherals.SYST;
 
