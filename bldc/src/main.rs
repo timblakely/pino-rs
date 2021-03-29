@@ -43,7 +43,7 @@ fn main() -> ! {
     let test = &Sram::take();
 
     let asdf = &test.standard_filters[0];
-    asdf.modify(|_, w| w.sft().classic());
+    asdf.modify(|_, w| w);
 
     // let mut systick = cortex_peripherals.SYST;
 
