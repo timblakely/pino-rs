@@ -1,6 +1,7 @@
 //! FDCAN implementation
 
 use core::marker::PhantomData;
+use core::mem::MaybeUninit;
 use core::ops::Deref;
 
 pub mod standard_filter;
@@ -23,7 +24,23 @@ impl Sram {
         0x4000_A400 as *const _
     }
 
+    fn zero_memory() {
+        const N: usize = 212;
+        // Safety: This... isn't really safe, but we have to zero a section of memory at an
+        // arbitraty location: FDCAN1 SRAM. It goes from 0x4000_A400 to 0x4000_A750 (exclusive).
+        // Convert the memory location into an array of uninitialized values.
+        let buf: &mut [MaybeUninit<u32>; N] = unsafe { core::mem::transmute(Self::ptr()) };
+        for slot in buf.iter_mut() {
+            // Safety: Use raw pointer intentionally so we never make a reference to the underlying
+            // memory - even a temporary one - to uninitialized memory.
+            unsafe {
+                slot.as_mut_ptr().write(0);
+            }
+        }
+    }
+
     pub fn take() -> Sram {
+        Self::zero_memory();
         Sram {
             _marker: PhantomData,
         }

@@ -48,7 +48,7 @@ fn main() -> ! {
             .sft()
             .variant(FilterType::Dual)
             .sfid1()
-            .bits(0b11001101)
+            .bits(0xAB)
     });
 
     // let mut systick = cortex_peripherals.SYST;
