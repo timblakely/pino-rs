@@ -1,7 +1,8 @@
+use core::marker::PhantomData;
+
 pub trait Readable {}
 pub trait Writeable {}
 
-use core::marker::PhantomData;
 pub struct Bitfield<U, T> {
     register: vcell::VolatileCell<U>,
     _marker: PhantomData<T>,
@@ -89,5 +90,111 @@ impl<U, T> WriteProxy<U, T> {
     pub unsafe fn bits(&mut self, bits: U) -> &mut Self {
         self.bits = bits;
         self
+    }
+}
+
+pub mod macros {
+    #[macro_export]
+    macro_rules! readable_accessor {
+        ($fn:ident, $n:ident, $size:ty, $mask:expr, $offset:expr) => {
+            #[inline(always)]
+            paste::paste! {
+                pub fn $fn(&self) -> [<$n _R>] {
+                    [<$n _R>]::new(((self.bits >> $offset) & $mask) as $size)
+                }
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! writable_accessor {
+        ($fn:ident, $n:ident) => {
+            paste::paste! {
+                #[inline(always)]
+                pub fn $fn(&mut self) -> [<$n _W>]  {
+                    [<$n _W>] { w: self }
+                }
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! readable_field {
+        ($n:ident, $s:ty) => {
+            paste::paste! {
+                #[allow(non_camel_case_types)]
+                pub type [<$n _R>] = bitfield::ReadProxy<$s, $s>;
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! writable_bits {
+        ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
+            paste::paste! {
+                #[allow(non_camel_case_types)]
+                pub struct [<$n _W>]<'a> {
+                    w: &'a mut WriteProxy,
+                }
+                impl<'a> [<$n _W>]<'a> {
+                    #[inline(always)]
+                    pub unsafe fn bits(self, value: $size) -> &'a mut WriteProxy {
+                        self.w.bits = (self.w.bits & !($mask << $offset)) | (((value as u32) & $mask) << $offset);
+                        self.w
+                    }
+                }
+            }
+        }
+    }
+
+    #[macro_export]
+    macro_rules! writable_variant_from {
+        ($n:ident, $size:ty) => {
+            impl From<$n> for $size {
+                #[inline(always)]
+                fn from(variant: $n) -> Self {
+                    variant as _
+                }
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! writable_variant {
+        ($n:ident, $mask:expr, $offset:expr, $variant:ident) => {
+            paste::paste! {
+                impl<'a> [<$n _W>]<'a> {
+                    #[inline(always)]
+                    pub fn variant(self, variant: $variant) -> &'a mut WriteProxy {
+                        unsafe { self.bits(variant.into()) }
+                    }
+                }
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! writable_field {
+        ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
+            crate::writable_bits!($n, $size, $mask, $offset);
+        };
+
+        ($n:ident, $size:ty, $mask:expr, $offset:expr, $variant:ident) => {
+            crate::writable_bits!($n, $size, $mask, $offset);
+            crate::writable_variant_from!($variant, $size);
+            crate::writable_variant!($n, $mask, $offset, $variant);
+        };
+    }
+
+    #[macro_export]
+    macro_rules! readwrite_field {
+        ($n:ident, $size:ty, $mask:expr, $offset:expr, $variant:ident) => {
+            crate::readable_field!($n, $size);
+            crate::writable_field!($n, $size, $mask, $offset, $variant);
+        };
+        ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
+            crate::readable_field!($n, $size);
+            crate::writable_field!($n, $size, $mask, $offset);
+        };
     }
 }
