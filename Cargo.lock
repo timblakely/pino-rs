@@ -46,6 +46,7 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "panic-itm",
+ "paste",
  "stm32g4",
  "vcell",
 ]
@@ -168,6 +169,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -226,7 +233,7 @@ name = "stm32g4"
 version = "0.13.0"
 dependencies = [
  "bare-metal",
- "cortex-m 0.6.7",
+ "cortex-m 0.7.2",
  "cortex-m-rt",
  "vcell",
 ]

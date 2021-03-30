@@ -7,10 +7,15 @@ use core::ops::Deref;
 pub mod standard_filter;
 
 #[repr(C)]
+pub struct RxFifo {
+    // pub buffer: [u32],
+}
+
+#[repr(C)]
 pub struct SramBlock {
     pub standard_filters: [standard_filter::StandardFilter; 28usize],
     // extended_filters: [ExtendedFilter; 8usize],
-    // rx_fifo0: [RxFifo; 3usize],
+    rx_fifo0: [RxFifo; 3usize],
     // rx_fifo1: [RxFifo; 3usize],
     // tx_event_fifo: [TxEvent; 3usize],
     // tx_buffers: [TxBuffer; 3usize],
@@ -129,8 +134,8 @@ impl Deref for Sram {
 //     }
 // }
 
-// pub struct Fdcan {
-//     pub extended_filters: ExtendedMessageFilterMem,
+// pub struct Fdcan<T> {
+
 // }
 
 // impl Fdcan {

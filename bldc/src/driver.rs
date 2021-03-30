@@ -14,7 +14,7 @@ pub struct Controller<S> {
 pub struct Init {}
 
 fn init(
-    nvic: device::NVIC,
+    mut nvic: cm::NVIC,
     rcc: device::RCC,
     flash: device::FLASH,
     pwr: device::PWR,
