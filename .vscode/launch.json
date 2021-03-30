@@ -25,8 +25,12 @@
             "svdFile": "${workspaceRoot}/tools/STM32G474xx.svd",
             "swoConfig": {
                 "enabled": true,
+                // For full-speed ITM
                 "cpuFrequency": 170000000,
                 "swoFrequency": 24000000,
+                // For initial boot (16MHz) ITM
+                // "cpuFrequency": 16000000,
+                // "swoFrequency": 16000000,
                 "source": "probe",
                 "decoders": [
                     { "type": "console", "label": "ITM", "port": 0 }

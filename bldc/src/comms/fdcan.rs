@@ -1,7 +1,7 @@
 //! FDCAN implementation
 
 use core::marker::PhantomData;
-use core::ops::{Deref, DerefMut};
+use core::ops::Deref;
 
 pub mod standard_filter;
 
@@ -23,10 +23,6 @@ impl Sram {
         0x4000_A400 as *const _
     }
 
-    pub const fn mut_ptr() -> *mut SramBlock {
-        0x4000_A400 as *mut _
-    }
-
     pub fn take() -> Sram {
         Sram {
             _marker: PhantomData,
@@ -38,13 +34,6 @@ impl Deref for Sram {
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
         unsafe { &*Sram::ptr() }
-    }
-}
-// TODO(blakely): Remove once write proxies are implemented.
-impl DerefMut for Sram {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *Sram::mut_ptr() }
     }
 }
 

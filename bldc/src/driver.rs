@@ -29,6 +29,10 @@ fn init(
         .acr
         .modify(|_, w| w.dcen().enabled().icen().enabled().prften().enabled());
 
+    // TODO(blakely): Move this somewhere more appropriate?
+    // Enable the FDCAN clock
+    rcc.apb1enr1.modify(|_, w| w.fdcanen().set_bit());
+
     Controller {
         rcc,
         flash,

@@ -1,4 +1,4 @@
 {
   "rewrap.autoWrap.enabled": true,
-  "rust-analyzer.inlayHints.enable": true
+  "rust-analyzer.inlayHints.enable": false
 }

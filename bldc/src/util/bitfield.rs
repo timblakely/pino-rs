@@ -24,12 +24,10 @@ where
     Self: Readable + Writeable,
     U: Copy,
 {
-    pub fn modify<F>(&self, f: F)
+    pub fn update<F>(&self, f: F)
     where
-        for<'a> F: FnOnce(
-            &ReadProxy<U, Self>,
-            &'a mut WriteProxy<U, Self>,
-        ) -> &'a mut WriteProxy<U, Self>,
+        for<'a> F:
+            FnOnce(&ReadProxy<U, Self>, &'a mut WriteProxy<U, Self>) -> &'a mut WriteProxy<U, Self>,
     {
         let bits = self.register.get();
         self.register.set(
