@@ -12,7 +12,7 @@ pub struct SramBlock {
     pub standard_filters: [standard_filter::StandardFilter; 28usize],
     // extended_filters: [ExtendedFilter; 8usize],
     rx_fifo0: [rx_fifo::RxFifo; 3usize],
-    // rx_fifo1: [RxFifo; 3usize],
+    rx_fifo1: [rx_fifo::RxFifo; 3usize],
     // tx_event_fifo: [TxEvent; 3usize],
     // tx_buffers: [TxBuffer; 3usize],
 }
