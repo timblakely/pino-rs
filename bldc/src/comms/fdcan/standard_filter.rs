@@ -1,9 +1,6 @@
-use crate::{
-    readable_accessor, readable_field, readwrite_field, writable_accessor, writable_field,
-};
+use crate::{readable_accessor, readwrite_field, writable_accessor};
 
 use crate::util::bitfield;
-use crate::util::bitfield::{Bitfield, Readable, Writeable};
 
 pub type ReadProxy = bitfield::ReadProxy<u32, StandardFilter>;
 pub type WriteProxy = bitfield::WriteProxy<u32, StandardFilter>;
@@ -14,9 +11,7 @@ pub enum FilterType {
     Classic = 0b10,
     Disabled = 0b11,
 }
-// trace_macros!(true);
 readwrite_field!(SFT, u8, 0b11, 30, FilterType);
-// trace_macros!(false);
 
 pub enum Action {
     Disable = 0b000,
@@ -27,14 +22,9 @@ pub enum Action {
     SetPriorityStoreRxFIFO0 = 0b101,
     SetPriorityStoreRxFIFO1 = 0b110,
 }
-readable_field!(SFEC, u8);
-writable_field!(SFEC, u8, 0b111, 27, Action);
-
-readable_field!(SFID1, u16);
-writable_field!(SFID1, u16, 0x7FF, 16);
-
-readable_field!(SFID2, u16);
-writable_field!(SFID2, u16, 0x7FF, 0);
+readwrite_field!(SFEC, u8, 0b111, 27, Action);
+readwrite_field!(SFID1, u16, 0x7FF, 16);
+readwrite_field!(SFID2, u16, 0x7FF, 0);
 
 impl ReadProxy {
     readable_accessor!(sft, SFT, u8, 0b11, 30);
@@ -50,9 +40,9 @@ impl WriteProxy {
     writable_accessor!(sfid2, SFID2);
 }
 
-pub type StandardFilter = Bitfield<u32, _StandardFilter>;
-impl Readable for StandardFilter {}
-impl Writeable for StandardFilter {}
+pub type StandardFilter = bitfield::Bitfield<u32, _StandardFilter>;
+impl bitfield::Readable for StandardFilter {}
+impl bitfield::Writeable for StandardFilter {}
 #[allow(missing_docs)]
 #[doc(hidden)]
 pub struct _StandardFilter;
