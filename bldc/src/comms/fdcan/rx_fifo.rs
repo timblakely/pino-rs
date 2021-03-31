@@ -1,13 +1,12 @@
 mod r0 {
     use crate::util::bitfield;
-    use crate::{readable_accessor, readwrite_field, writable_accessor};
+    use crate::{readable_accessor, readable_field};
     pub type ReadProxy = bitfield::ReadProxy<u32, R0>;
-    pub type WriteProxy = bitfield::WriteProxy<u32, R0>;
 
-    readwrite_field!(ESI, u8, 0b1, 31);
-    readwrite_field!(XTD, u8, 0b1, 30);
-    readwrite_field!(RTR, u8, 0b1, 29);
-    readwrite_field!(ID, u32, 0x3FFF_FFFF, 0);
+    readable_field!(ESI, u8);
+    readable_field!(XTD, u8);
+    readable_field!(RTR, u8);
+    readable_field!(ID, u32);
 
     impl ReadProxy {
         readable_accessor!(error_state, ESI, u8, 0b1, 31);
@@ -16,16 +15,8 @@ mod r0 {
         readable_accessor!(id, ID, u32, 0x3FFF_FFFF, 0);
     }
 
-    impl WriteProxy {
-        writable_accessor!(error_state, ESI);
-        writable_accessor!(extended_id, XTD);
-        writable_accessor!(remote_transmission, RTR);
-        writable_accessor!(id, ID);
-    }
-
     pub type R0 = bitfield::Bitfield<u32, _R0>;
     impl bitfield::Readable for R0 {}
-    impl bitfield::Writeable for R0 {}
     #[allow(missing_docs)]
     #[doc(hidden)]
     pub struct _R0;
