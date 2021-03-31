@@ -12,7 +12,7 @@ mod r0 {
         readable_accessor!(error_state, ESI, u8, 0b1, 31);
         readable_accessor!(extended_id, XTD, u8, 0b1, 30);
         readable_accessor!(remote_transmission, RTR, u8, 0b1, 29);
-        readable_accessor!(id, ID, u32, 0x3FFF_FFFF, 0);
+        readable_accessor!(id, ID, u32, 0x1FFF_FFFF, 0);
     }
 
     pub type R0 = bitfield::Bitfield<u32, _R0>;

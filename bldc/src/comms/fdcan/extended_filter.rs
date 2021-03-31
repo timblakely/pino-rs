@@ -5,11 +5,11 @@ mod f0 {
     pub type WriteProxy = bitfield::WriteProxy<u32, F0>;
 
     readwrite_field!(EFEC, u8, 0b111, 29);
-    readwrite_field!(ID1, u32, 0x3FFF_FFFF, 0);
+    readwrite_field!(ID1, u32, 0x1FFF_FFFF, 0);
 
     impl ReadProxy {
         readable_accessor!(config, EFEC, u8, 0b111, 29);
-        readable_accessor!(id1, ID1, u32, 0x3FFF_FFFF, 0);
+        readable_accessor!(id1, ID1, u32, 0x1FFF_FFFF, 0);
     }
 
     impl WriteProxy {
@@ -32,11 +32,11 @@ mod f1 {
     pub type WriteProxy = bitfield::WriteProxy<u32, F1>;
 
     readwrite_field!(EFT, u8, 0b11, 30);
-    readwrite_field!(ID2, u32, 0x3FFF_FFFF, 0);
+    readwrite_field!(ID2, u32, 0x1FFF_FFFF, 0);
 
     impl ReadProxy {
         readable_accessor!(filter_type, EFT, u8, 0b11, 30);
-        readable_accessor!(id2, ID2, u32, 0x3FFF_FFFF, 0);
+        readable_accessor!(id2, ID2, u32, 0x1FFF_FFFF, 0);
     }
 
     impl WriteProxy {

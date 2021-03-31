@@ -7,6 +7,8 @@ use core::ops::Deref;
 pub mod extended_filter;
 pub mod rx_fifo;
 pub mod standard_filter;
+pub mod tx_event;
+pub mod tx_fifo;
 
 #[repr(C)]
 pub struct SramBlock {
@@ -14,8 +16,8 @@ pub struct SramBlock {
     extended_filters: [extended_filter::ExtendedFilter; 8usize],
     rx_fifo0: [rx_fifo::RxFifo; 3usize],
     rx_fifo1: [rx_fifo::RxFifo; 3usize],
-    // tx_event_fifo: [TxEvent; 3usize],
-    // tx_buffers: [TxBuffer; 3usize],
+    tx_event_fifo: [tx_event::TxEvent; 3usize],
+    tx_buffers: [tx_fifo::TxFifo; 3usize],
 }
 
 pub struct Sram {
