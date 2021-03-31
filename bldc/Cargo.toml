@@ -12,9 +12,8 @@ cortex-m-semihosting = "0.3.3"
 vcell = "0.1.0"
 paste = "1.0"
 # panic-halt = "0.2.0"
-
-# Uncomment for the panic example.
 panic-itm = {version = "0.4.2", optional = true}
+static_assertions = "1.1.0"
 
 [features]
 default = ["panic-itm"]

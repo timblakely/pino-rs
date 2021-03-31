@@ -1,5 +1,7 @@
 //! FDCAN implementation
 
+use static_assertions::const_assert;
+
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::Deref;
@@ -19,6 +21,8 @@ pub struct SramBlock {
     tx_event_fifo: [tx_event::TxEvent; 3usize],
     tx_buffers: [tx_fifo::TxFifo; 3usize],
 }
+// Ensure that the size of the FDCANM SRAM block is what we expect it to be.
+const_assert!(core::mem::size_of::<SramBlock>() == 0x350usize);
 
 pub struct Sram {
     _marker: PhantomData<*const ()>,

@@ -19,7 +19,9 @@
             "group": {
                 "kind": "build",
                 "isDefault": true
-            }
+            },
+            // Enable macro tracing
+            // "options": {"env": {"RUSTFLAGS": "-Z macro-backtrace"}}
         },
         {
             "label": "Cargo Build (release)",
