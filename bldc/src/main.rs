@@ -40,16 +40,16 @@ fn main() -> ! {
     //     0x7,
     // );
 
-    let test = &Sram::take();
+    // let test = &Sram::take();
 
-    let asdf = &test.standard_filters[0];
-    asdf.update(|_, w| unsafe {
-        w //
-            .sft()
-            .variant(FilterType::Dual)
-            .sfid1()
-            .bits(0xAB)
-    });
+    // let asdf = &test.standard_filters[0];
+    // asdf.update(|_, w| unsafe {
+    //     w //
+    //         .sft()
+    //         .variant(FilterType::Dual)
+    //         .sfid1()
+    //         .bits(0xAB)
+    // });
 
     // let mut systick = cortex_peripherals.SYST;
 

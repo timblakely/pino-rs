@@ -4,13 +4,14 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::Deref;
 
+pub mod extended_filter;
 pub mod rx_fifo;
 pub mod standard_filter;
 
 #[repr(C)]
 pub struct SramBlock {
-    pub standard_filters: [standard_filter::StandardFilter; 28usize],
-    // extended_filters: [ExtendedFilter; 8usize],
+    standard_filters: [standard_filter::StandardFilter; 28usize],
+    extended_filters: [extended_filter::ExtendedFilter; 8usize],
     rx_fifo0: [rx_fifo::RxFifo; 3usize],
     rx_fifo1: [rx_fifo::RxFifo; 3usize],
     // tx_event_fifo: [TxEvent; 3usize],

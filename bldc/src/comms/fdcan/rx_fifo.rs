@@ -7,13 +7,13 @@ mod r0 {
     readwrite_field!(ESI, u8, 0b1, 31);
     readwrite_field!(XTD, u8, 0b1, 30);
     readwrite_field!(RTR, u8, 0b1, 29);
-    readwrite_field!(ID, u32, 0x1FF_FFFF, 0);
+    readwrite_field!(ID, u32, 0x3FFF_FFFF, 0);
 
     impl ReadProxy {
         readable_accessor!(error_state, ESI, u8, 0b1, 31);
         readable_accessor!(extended_id, XTD, u8, 0b1, 30);
         readable_accessor!(remote_transmission, RTR, u8, 0b1, 29);
-        readable_accessor!(id, ID, u32, 0x1FF_FFFF, 0);
+        readable_accessor!(id, ID, u32, 0x3FFF_FFFF, 0);
     }
 
     impl WriteProxy {
