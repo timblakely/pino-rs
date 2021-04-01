@@ -9,11 +9,10 @@ use bldc::comms::fdcan::extended_filter::{ExtendedFilterMode, ExtendedFilterType
 use bldc::comms::fdcan::Fdcan;
 use bldc::driver;
 
+#[cfg(feature = "panic-halt")]
+use panic_halt as _;
 #[cfg(feature = "panic-itm")]
-use panic_itm as _;
-// #[cfg(feature = "panic-halt")]
-// use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to
-// catch panics
+use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 
 // TODO(blakely): Comment on all the stuff happens before we actually get
 // here...
