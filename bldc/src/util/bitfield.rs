@@ -1,5 +1,4 @@
 use core::marker::PhantomData;
-use num_traits::Num;
 
 pub trait Readable {}
 pub trait Writeable {}
