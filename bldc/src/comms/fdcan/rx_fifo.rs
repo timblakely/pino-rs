@@ -6,13 +6,15 @@ mod r0 {
     readable_field!(ESI, u8);
     readable_field!(XTD, u8);
     readable_field!(RTR, u8);
-    readable_field!(ID, u32);
+    readable_field!(SID, u32);
+    readable_field!(EID, u32);
 
     impl ReadProxy {
         readable_accessor!(error_state, ESI, u8, 0b1, 31);
-        readable_accessor!(extended_id, XTD, u8, 0b1, 30);
+        readable_accessor!(extended, XTD, u8, 0b1, 30);
         readable_accessor!(remote_transmission, RTR, u8, 0b1, 29);
-        readable_accessor!(id, ID, u32, 0x1FFF_FFFF, 0);
+        readable_accessor!(standard_id, SID, u32, 0x7FF, 18);
+        readable_accessor!(extended_id, EID, u32, 0x1FFF_FFFF, 0);
     }
 
     pub type R0 = bitfield::Bitfield<u32, _R0>;

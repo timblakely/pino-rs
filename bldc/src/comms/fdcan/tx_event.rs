@@ -7,20 +7,23 @@ mod e0 {
     readwrite_field!(ESI, u8, 0b1, 31);
     readwrite_field!(XTD, u8, 0b1, 30);
     readwrite_field!(RTR, u8, 0b1, 29);
-    readwrite_field!(ID, u32, 0x1FFF_FFFF, 0);
+    readwrite_field!(SID, u32, 0x7FF, 18);
+    readwrite_field!(EID, u32, 0x1FFF_FFFF, 0);
 
     impl ReadProxy {
         readable_accessor!(error_state, ESI, u8, 0b1, 31);
         readable_accessor!(extended, XTD, u8, 0b1, 30);
         readable_accessor!(remote_transmission, RTR, u8, 0b1, 29);
-        readable_accessor!(id, ID, u32, 0x1FFF_FFFF, 0);
+        readable_accessor!(standard_id, SID, u32, 0x7FF, 18);
+        readable_accessor!(extended_id, EID, u32, 0x1FFF_FFFF, 0);
     }
 
     impl WriteProxy {
         writable_accessor!(error_state, ESI);
         writable_accessor!(extended, XTD);
         writable_accessor!(remote_transmission, RTR);
-        writable_accessor!(id, ID);
+        writable_accessor!(standard_id, SID);
+        writable_accessor!(extended_id, EID);
     }
 
     pub type E0 = bitfield::Bitfield<u32, _E0>;
