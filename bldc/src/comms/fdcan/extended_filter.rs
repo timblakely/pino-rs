@@ -75,20 +75,6 @@ pub enum ExtendedFilterType {
 
 #[repr(C)]
 pub struct ExtendedFilter {
-    f0: f0::F0,
-    f1: f1::F1,
-}
-
-impl ExtendedFilter {
-    pub fn set(
-        &mut self,
-        mode: ExtendedFilterMode,
-        filter: ExtendedFilterType,
-        id1: u32,
-        id2: u32,
-    ) {
-        self.f0.update(|_, w| w.mode().variant(mode).id1().set(id1));
-        self.f1
-            .update(|_, w| w.filter_type().variant(filter).id2().set(id2));
-    }
+    pub f0: f0::F0,
+    pub f1: f1::F1,
 }

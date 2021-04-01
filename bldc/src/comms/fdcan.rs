@@ -1,10 +1,10 @@
 //! FDCAN implementation
 
-use static_assertions::const_assert;
-
+use core::marker::PhantomData;
 use core::mem::MaybeUninit;
-use core::ops::Deref;
-use core::{marker::PhantomData, ops::DerefMut};
+use core::ops::{Deref, DerefMut};
+use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
+use static_assertions::const_assert;
 
 pub mod extended_filter;
 pub mod rx_fifo;
@@ -71,71 +71,6 @@ impl DerefMut for Sram {
     }
 }
 
-// pub enum ExtendedFilterType {
-//     Range = 0b00,
-//     Dual = 0b01,
-//     Classic = 0b10,
-//     RangeNoXIDAM = 0b11,
-// }
-
-// pub struct ExtendedMessageFilter {
-//     f0: u32,
-//     f1: u32,
-// }
-
-// impl ExtendedMessageFilter {
-//     pub fn set(
-//         &mut self,
-//         mode: ExtendedFilterMode,
-//         filter: ExtendedFilterType,
-//         id1: u32,
-//         id2: u32,
-//     ) {
-//         self.f0 = ((mode as u32) << 29) | (id1 & !(0b111 << 29));
-//         self.f1 = ((filter as u32) << 30) | (id2 & !(0b11 << 30));
-//     }
-
-//     pub fn clear(&mut self) {
-//         self.f0 = 0;
-//         self.f1 = 0;
-//     }
-// }
-
-// pub struct ExtendedMessageFilterBlock {
-//     filters: [ExtendedMessageFilter; 8],
-// }
-
-// impl ExtendedMessageFilterBlock {
-//     pub fn filter(&mut self, i: usize) -> &mut ExtendedMessageFilter {
-//         &mut self.filters[i]
-//     }
-// }
-
-// pub struct ExtendedMessageFilterMem {
-//     _marker: PhantomData<*const ()>,
-// }
-// // unsafe impl Send for I2C4 {}
-// impl ExtendedMessageFilterMem {
-//     ///Returns a pointer to the register block
-//     #[inline(always)]
-//     pub const fn ptr() -> *const ExtendedMessageFilterBlock {
-//         0x4000_A400 as *const _
-//     }
-// }
-// impl Deref for ExtendedMessageFilterMem {
-//     type Target = ExtendedMessageFilterBlock;
-//     #[inline(always)]
-//     fn deref(&self) -> &Self::Target {
-//         unsafe { &*ExtendedMessageFilterMem::ptr() }
-//     }
-// }
-// impl DerefMut for ExtendedMessageFilterMem {
-//     #[inline(always)]
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         unsafe { &mut *ExtendedMessageFilterMem::ptr() }
-//     }
-// }
-
 pub struct Fdcan {
     pub sram: Sram,
 }
@@ -143,5 +78,22 @@ pub struct Fdcan {
 impl Fdcan {
     pub fn new() -> Fdcan {
         Fdcan { sram: Sram::take() }
+    }
+
+    pub fn set_extended_filter(
+        &mut self,
+        i: usize,
+        mode: ExtendedFilterMode,
+        filter_type: ExtendedFilterType,
+        id1: u32,
+        id2: u32,
+    ) {
+        let filter = &mut self.sram.extended_filters[i];
+        filter
+            .f0
+            .update(|_, w| w.mode().variant(mode).id1().set(id1));
+        filter
+            .f1
+            .update(|_, w| w.filter_type().variant(filter_type).id2().set(id2));
     }
 }
