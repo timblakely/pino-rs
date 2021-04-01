@@ -44,5 +44,7 @@ fn init(
 pub fn take_hardware() -> Controller<Init> {
     let cp = cm::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();
+    // p.FDCAN1.xidam.write(|w| w.eidm().bits(12));
+    // p.TIM1.arr.write(|w| w.bits(123));
     init(cp.NVIC, p.RCC, p.FLASH, p.PWR)
 }

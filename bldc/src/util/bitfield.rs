@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use num_traits::Num;
 
 pub trait Readable {}
 pub trait Writeable {}
@@ -80,6 +81,7 @@ where
         self.bits.eq(&(*other).into())
     }
 }
+
 // TODO(blakely): Specialize for bool
 
 pub struct WriteProxy<U, T> {
@@ -148,6 +150,20 @@ pub mod macros {
     }
 
     #[macro_export]
+    macro_rules! writable_bits_safe {
+        ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
+            paste::paste! {
+                impl<'a> [<$n _W>]<'a> {
+                    #[inline(always)]
+                    pub fn set(self, value: $size) -> &'a mut WriteProxy {
+                        unsafe { self.bits(value) }
+                    }
+                }
+            }
+        };
+    }
+
+    #[macro_export]
     macro_rules! writable_variant_from {
         ($n:ident, $size:ty) => {
             impl From<$n> for $size {
@@ -175,10 +191,13 @@ pub mod macros {
 
     #[macro_export]
     macro_rules! writable_field {
+        (bitsafe $n:ident, $size:ty, $mask:expr, $offset:expr) => {
+            crate::writable_bits!($n, $size, $mask, $offset);
+            crate::writable_bits_safe!($n, $size, $mask, $offset);
+        };
         ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
             crate::writable_bits!($n, $size, $mask, $offset);
         };
-
         ($n:ident, $size:ty, $mask:expr, $offset:expr, $variant:ident) => {
             crate::writable_bits!($n, $size, $mask, $offset);
             crate::writable_variant_from!($variant, $size);
@@ -188,6 +207,10 @@ pub mod macros {
 
     #[macro_export]
     macro_rules! readwrite_field {
+        (bitsafe $n:ident, $size:ty, $mask:expr, $offset:expr) => {
+            crate::readable_field!($n, $size);
+            crate::writable_field!(bitsafe $n, $size, $mask, $offset);
+        };
         ($n:ident, $size:ty, $mask:expr, $offset:expr, $variant:ident) => {
             crate::readable_field!($n, $size);
             crate::writable_field!($n, $size, $mask, $offset, $variant);

@@ -2,9 +2,9 @@
 
 use static_assertions::const_assert;
 
-use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::Deref;
+use core::{marker::PhantomData, ops::DerefMut};
 
 pub mod extended_filter;
 pub mod rx_fifo;
@@ -15,7 +15,7 @@ pub mod tx_fifo;
 #[repr(C)]
 pub struct SramBlock {
     standard_filters: [standard_filter::StandardFilter; 28usize],
-    extended_filters: [extended_filter::ExtendedFilter; 8usize],
+    pub extended_filters: [extended_filter::ExtendedFilter; 8usize],
     rx_fifo0: [rx_fifo::RxFifo; 3usize],
     rx_fifo1: [rx_fifo::RxFifo; 3usize],
     tx_event_fifo: [tx_event::TxEvent; 3usize],
@@ -30,6 +30,9 @@ pub struct Sram {
 impl Sram {
     pub const fn ptr() -> *const SramBlock {
         0x4000_A400 as *const _
+    }
+    pub const fn mut_ptr() -> *mut SramBlock {
+        0x4000_A400 as *mut _
     }
 
     fn zero_memory() {
@@ -61,16 +64,12 @@ impl Deref for Sram {
         unsafe { &*Sram::ptr() }
     }
 }
-
-// pub enum ExtendedFilterMode {
-//     Disable = 0b000,
-//     StoreRxFIFO0 = 0b001,
-//     StoreRxFIFO1 = 0b010,
-//     Reject = 0b011,
-//     SetPriority = 0b100,
-//     SetPriorityStoreRxFIFO0 = 0b101,
-//     SetPriorityStoreRxFIFO1 = 0b110,
-// }
+impl DerefMut for Sram {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *Sram::mut_ptr() }
+    }
+}
 
 // pub enum ExtendedFilterType {
 //     Range = 0b00,
@@ -137,16 +136,12 @@ impl Deref for Sram {
 //     }
 // }
 
-// pub struct Fdcan<T> {
+pub struct Fdcan {
+    pub sram: Sram,
+}
 
-// }
-
-// impl Fdcan {
-//     pub fn new() -> Fdcan {
-//         Fdcan {
-//             extended_filters: ExtendedMessageFilterMem {
-//                 _marker: PhantomData,
-//             },
-//         }
-//     }
-// }
+impl Fdcan {
+    pub fn new() -> Fdcan {
+        Fdcan { sram: Sram::take() }
+    }
+}

@@ -5,7 +5,8 @@
 // use cortex_m::{peripheral::syst, peripheral::ITM, Peripherals};
 use cortex_m_rt::entry;
 
-use bldc::comms::fdcan::{standard_filter::FilterType, Sram};
+use bldc::comms::fdcan::extended_filter::{ExtendedFilterMode, ExtendedFilterType};
+use bldc::comms::fdcan::Fdcan;
 use bldc::driver;
 use stm32g4::stm32g474 as device;
 
@@ -31,14 +32,15 @@ fn main() -> ! {
 
     let _foo = driver::take_hardware();
 
-    // let fdcan = Fdcan::new();
-    // let asdf = fdcan.extended_filters.filter(0);
-    // asdf.set(
-    //     ExtendedFilterMode::StoreRxFIFO0,
-    //     ExtendedFilterType::Dual,
-    //     0x3,
-    //     0x7,
-    // );
+    let mut fdcan = Fdcan::new();
+    let asdf = &mut fdcan.sram.extended_filters[1];
+
+    asdf.set(
+        ExtendedFilterMode::StoreRxFIFO0,
+        ExtendedFilterType::Dual,
+        0x3,
+        0x7,
+    );
 
     // let test = &Sram::take();
 

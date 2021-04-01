@@ -1,19 +1,22 @@
+use core::any::Any;
+
 mod f0 {
+    use super::ExtendedFilterMode;
     use crate::util::bitfield;
     use crate::{readable_accessor, readwrite_field, writable_accessor};
     pub type ReadProxy = bitfield::ReadProxy<u32, F0>;
     pub type WriteProxy = bitfield::WriteProxy<u32, F0>;
 
-    readwrite_field!(EFEC, u8, 0b111, 29);
-    readwrite_field!(ID1, u32, 0x1FFF_FFFF, 0);
+    readwrite_field!(EFEC, u8, 0b111, 29, ExtendedFilterMode);
+    readwrite_field!(bitsafe ID1, u32, 0x1FFF_FFFF, 0);
 
     impl ReadProxy {
-        readable_accessor!(config, EFEC, u8, 0b111, 29);
+        readable_accessor!(mode, EFEC, u8, 0b111, 29);
         readable_accessor!(id1, ID1, u32, 0x1FFF_FFFF, 0);
     }
 
     impl WriteProxy {
-        writable_accessor!(config, EFEC);
+        writable_accessor!(mode, EFEC);
         writable_accessor!(id1, ID1);
     }
 
@@ -26,13 +29,14 @@ mod f0 {
 }
 
 mod f1 {
+    use super::ExtendedFilterType;
     use crate::util::bitfield;
     use crate::{readable_accessor, readwrite_field, writable_accessor};
     pub type ReadProxy = bitfield::ReadProxy<u32, F1>;
     pub type WriteProxy = bitfield::WriteProxy<u32, F1>;
 
-    readwrite_field!(EFT, u8, 0b11, 30);
-    readwrite_field!(ID2, u32, 0x1FFF_FFFF, 0);
+    readwrite_field!(EFT, u8, 0b11, 30, ExtendedFilterType);
+    readwrite_field!(bitsafe ID2, u32, 0x1FFF_FFFF, 0);
 
     impl ReadProxy {
         readable_accessor!(filter_type, EFT, u8, 0b11, 30);
@@ -52,8 +56,39 @@ mod f1 {
     pub struct _F1;
 }
 
+pub enum ExtendedFilterMode {
+    Disable = 0b000,
+    StoreRxFIFO0 = 0b001,
+    StoreRxFIFO1 = 0b010,
+    Reject = 0b011,
+    SetPriority = 0b100,
+    SetPriorityStoreRxFIFO0 = 0b101,
+    SetPriorityStoreRxFIFO1 = 0b110,
+}
+
+pub enum ExtendedFilterType {
+    Range = 0b00,
+    Dual = 0b01,
+    Classic = 0b10,
+    RangeNoXIDAM = 0b11,
+}
+
 #[repr(C)]
 pub struct ExtendedFilter {
     f0: f0::F0,
     f1: f1::F1,
+}
+
+impl ExtendedFilter {
+    pub fn set(
+        &mut self,
+        mode: ExtendedFilterMode,
+        filter: ExtendedFilterType,
+        id1: u32,
+        id2: u32,
+    ) {
+        self.f0.update(|_, w| w.mode().variant(mode).id1().set(id1));
+        self.f1
+            .update(|_, w| w.filter_type().variant(filter).id2().set(id2));
+    }
 }
