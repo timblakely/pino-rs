@@ -4,17 +4,21 @@ use stm32g4::stm32g474 as device;
 use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
 
 pub struct Controller<S> {
+    #[allow(dead_code)]
     rcc: device::RCC,
+    #[allow(dead_code)]
     flash: device::FLASH,
+    #[allow(dead_code)]
     pwr: device::PWR,
 
+    #[allow(dead_code)]
     mode_state: S,
 }
 
 pub struct Init {}
 
 fn init(
-    mut nvic: cm::NVIC,
+    _nvic: cm::NVIC,
     rcc: device::RCC,
     flash: device::FLASH,
     pwr: device::PWR,

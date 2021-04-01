@@ -87,7 +87,7 @@ impl Fdcan {
         filter_type: ExtendedFilterType,
         id1: u32,
         id2: u32,
-    ) {
+    ) -> &mut Self {
         let filter = &mut self.sram.extended_filters[i];
         filter
             .f0
@@ -95,5 +95,6 @@ impl Fdcan {
         filter
             .f1
             .update(|_, w| w.filter_type().variant(filter_type).id2().set(id2));
+        self
     }
 }

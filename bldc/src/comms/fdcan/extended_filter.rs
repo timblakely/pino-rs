@@ -1,5 +1,3 @@
-use core::any::Any;
-
 mod f0 {
     use super::ExtendedFilterMode;
     use crate::util::bitfield;
