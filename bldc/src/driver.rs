@@ -3,6 +3,7 @@ use stm32g4::stm32g474 as device;
 
 use crate::comms::fdcan;
 use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
+use third_party::m4vga_rs::util::armv7m::disable_irq;
 
 pub struct Controller<S> {
     #[allow(dead_code)]
@@ -111,6 +112,8 @@ impl Controller<Init> {
             .pupdr
             .modify(|_, w| w.pupdr11().floating().pupdr12().floating());
 
+        // Make sure we don't receive any incoming messages before we're ready.
+        disable_irq(device::Interrupt::FDCAN1_INTR0_IT);
         // TODO(blakely): clean up this API.
         let mut fdcan1 = fdcan::take(self.mode_state.fdcan).enter_init();
         fdcan1

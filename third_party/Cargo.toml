@@ -1,0 +1,9 @@
+[package]
+name = "third_party"
+version = "0.1.0"
+authors = ["Tim Blakely <tim.blakely@gmail.com>"]
+edition = "2018"
+
+
+[dependencies]
+cortex-m = "0.7.2"

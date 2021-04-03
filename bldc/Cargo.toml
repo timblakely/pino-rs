@@ -6,13 +6,14 @@ name = "bldc"
 version = "0.1.0"
 
 [dependencies]
-cortex-m = "0.6.0"
-cortex-m-rt = "0.6.10"
+cortex-m = "0.7.2"
+cortex-m-rt = "0.6.13"
 cortex-m-semihosting = "0.3.3"
 vcell = "0.1.0"
 paste = "1.0"
 # panic-halt = "0.2.0"
 panic-itm = {version = "0.4.2", optional = true}
+third_party = {path = "../third_party"}
 static_assertions = "1.1.0"
 
 [features]
