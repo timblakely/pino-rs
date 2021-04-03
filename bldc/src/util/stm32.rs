@@ -3,11 +3,13 @@
 use stm32g4::stm32g474 as device;
 
 // Shamelessly lifted from m4vga-rs
+#[macro_export]
 macro_rules! block_while {
     ($condition:expr) => {
         while $condition {}
     };
 }
+#[macro_export]
 macro_rules! block_until {
     ($condition:expr) => {
         block_while!(!$condition)

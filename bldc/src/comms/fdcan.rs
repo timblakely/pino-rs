@@ -1,10 +1,11 @@
 //! FDCAN implementation
-
+use crate::block_while;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 use static_assertions::const_assert;
+use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A};
 
 pub mod extended_filter;
 pub mod rx_fifo;
@@ -50,9 +51,9 @@ impl Sram {
         }
     }
 
-    pub fn take() -> Sram {
+    pub fn get() -> &'static mut Sram {
         Self::zero_memory();
-        Sram {
+        &mut Sram {
             _marker: PhantomData,
         }
     }
@@ -71,15 +72,44 @@ impl DerefMut for Sram {
     }
 }
 
-pub struct Fdcan {
-    pub sram: Sram,
+pub struct Uninit;
+pub struct Init;
+pub struct Running;
+
+trait EnterInit {}
+impl EnterInit for Uninit {}
+impl EnterInit for Running {}
+
+pub struct Fdcan<S> {
+    sram: &'static mut Sram,
+    peripheral: device::FDCAN1,
+    mode_state: S,
 }
 
-impl Fdcan {
-    pub fn new() -> Fdcan {
-        Fdcan { sram: Sram::take() }
+pub fn take(fdcan: device::FDCAN1) -> Fdcan<Uninit> {
+    Fdcan {
+        sram: Sram::get(),
+        peripheral: fdcan,
+        mode_state: Uninit {},
     }
+}
 
+impl<S: EnterInit> Fdcan<S> {
+    pub fn enter_init(self) -> Fdcan<Init> {
+        self.peripheral.cccr.modify(|_, w| w.init().init());
+        // Block until we know we're in init mode.
+        block_while! { self.peripheral.cccr.read().init() == INIT_A::RUN };
+        // Enable config writing
+        self.peripheral.cccr.modify(|_, w| w.cce().readwrite());
+        Fdcan {
+            sram: self.sram,
+            peripheral: self.peripheral,
+            mode_state: Init {},
+        }
+    }
+}
+
+impl Fdcan<Init> {
     pub fn set_extended_filter(
         &mut self,
         i: usize,
@@ -96,5 +126,82 @@ impl Fdcan {
             .f1
             .update(|_, w| w.filter_type().variant(filter_type).id2().set(id2));
         self
+    }
+
+    pub fn configure_protocol(&mut self) -> &mut Self {
+        self.peripheral.cccr.modify(|_, w| {
+            w // Enable TX pause
+                .txp()
+                .clear_bit()
+                // No edge filtering
+                .efbi()
+                .clear_bit()
+                // Protocol exception handling disabled.
+                .pxhd()
+                .clear_bit()
+                // Enable bit rate switching
+                .brse()
+                .set_bit()
+                // Enable FD
+                .fdoe()
+                .set_bit()
+                // No test mode
+                .test()
+                .normal()
+                // Enable automatic retransmission
+                .dar()
+                .retransmit()
+                // No bus monitoring
+                .mon()
+                .clear_bit()
+                // No restricted mode.
+                .asm()
+                .normal()
+                // No sleep mode
+                .csr()
+                .clear_bit()
+        });
+        self
+    }
+
+    pub fn configure_timing(&mut self) -> &mut Self {
+        self.peripheral.nbtp.modify(|_, w| {
+            // Safety: The stm32-rs package does not have an allowable range set for these fields,
+            // so it's inherently unsafe to set arbitrary bits. For now these values are hard-coded
+            // to known good values.
+            unsafe {
+                w.nbrp()
+                    .bits(4)
+                    .ntseg1()
+                    .bits(21)
+                    .ntseg2()
+                    .bits(10)
+                    .nsjw()
+                    .bits(5)
+            }
+        });
+        self.peripheral.dbtp.modify(|_, w| {
+            // Safety: Same as above: the stm32-rs package does not have an allowable range set for
+            // these fields.
+            unsafe {
+                w.dbrp()
+                    .bits(0)
+                    .dtseg1()
+                    .bits(32)
+                    .dtseg2()
+                    .bits(10)
+                    .dsjw()
+                    .bits(10)
+            }
+        });
+        self
+    }
+
+    pub fn start(self) -> Fdcan<Running> {
+        Fdcan {
+            peripheral: self.peripheral,
+            sram: self.sram,
+            mode_state: Running,
+        }
     }
 }

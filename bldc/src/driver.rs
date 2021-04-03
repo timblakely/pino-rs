@@ -1,23 +1,24 @@
 use cortex_m::peripheral as cm;
 use stm32g4::stm32g474 as device;
 
+use crate::comms::fdcan;
 use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
 
 pub struct Controller<S> {
-    #[allow(dead_code)]
-    fdcan: device::FDCAN1,
-
     #[allow(dead_code)]
     mode_state: S,
 }
 
 pub struct Init {
+    pub fdcan: device::FDCAN1,
     pub gpioa: device::GPIOA,
     pub gpiob: device::GPIOB,
     pub gpioc: device::GPIOC,
 }
 
-pub struct Ready;
+pub struct Ready {
+    fdcan: fdcan::Fdcan<fdcan::Running>,
+}
 
 fn init(
     _nvic: cm::NVIC,
@@ -63,8 +64,8 @@ fn init(
     rcc.apb1enr1.modify(|_, w| w.spi3en().set_bit());
 
     Controller {
-        fdcan,
         mode_state: Init {
+            fdcan,
             gpioa,
             gpiob,
             gpioc,
@@ -110,9 +111,23 @@ impl Controller<Init> {
             .pupdr
             .modify(|_, w| w.pupdr11().floating().pupdr12().floating());
 
+        // TODO(blakely): clean up this API.
+        let mut fdcan1 = fdcan::take(self.mode_state.fdcan).enter_init();
+        let fdcan1 = fdcan1
+            .set_extended_filter(
+                1,
+                fdcan::extended_filter::ExtendedFilterMode::StoreRxFIFO0,
+                fdcan::extended_filter::ExtendedFilterType::Dual,
+                0x1,
+                0x3,
+            )
+            .configure_protocol()
+            .configure_timing();
+
         let new_self = Controller {
-            fdcan: self.fdcan,
-            mode_state: Ready {},
+            mode_state: Ready {
+                fdcan: fdcan1.start(),
+            },
         };
         new_self
     }
@@ -121,8 +136,6 @@ impl Controller<Init> {
 pub fn take_hardware() -> Controller<Init> {
     let cp = cm::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();
-    // p.FDCAN1.xidam.write(|w| w.eidm().bits(12));
-    // p.TIM1.arr.write(|w| w.bits(123));
 
     init(
         cp.NVIC, p.RCC, p.FLASH, p.PWR, p.GPIOA, p.GPIOB, p.GPIOC, p.FDCAN1,
