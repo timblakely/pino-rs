@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-use bldc::comms::fdcan::extended_filter::{ExtendedFilterMode, ExtendedFilterType};
-use bldc::comms::fdcan::Fdcan;
 use bldc::driver;
 
 #[cfg(feature = "panic-halt")]
@@ -14,7 +12,7 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let foo = driver::take_hardware();
+    let _foo = driver::take_hardware().configure_peripherals();
 
     // foo.gpioa.moder.modify(|_, w| w.moder5().output());
     // foo.gpioa.pupdr.modify(|_, w| w.pupdr5().floating());

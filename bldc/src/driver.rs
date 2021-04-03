@@ -74,7 +74,7 @@ fn init(
 }
 
 impl Controller<Init> {
-    pub fn configure_peripherals(mut self) -> Controller<Ready> {
+    pub fn configure_peripherals(self) -> Controller<Ready> {
         let gpioa = self.mode_state.gpioa;
 
         // Configure GPIO pins
@@ -113,7 +113,7 @@ impl Controller<Init> {
 
         // TODO(blakely): clean up this API.
         let mut fdcan1 = fdcan::take(self.mode_state.fdcan).enter_init();
-        let fdcan1 = fdcan1
+        fdcan1
             .set_extended_filter(
                 1,
                 fdcan::extended_filter::ExtendedFilterMode::StoreRxFIFO0,
