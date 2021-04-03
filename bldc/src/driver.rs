@@ -115,8 +115,8 @@ impl Controller<Init> {
         // Make sure we don't receive any incoming messages before we're ready.
         disable_irq(device::Interrupt::FDCAN1_INTR0_IT);
         // TODO(blakely): clean up this API.
-        let mut fdcan1 = fdcan::take(self.mode_state.fdcan).enter_init();
-        fdcan1
+        let fdcan1 = fdcan::take(self.mode_state.fdcan)
+            .enter_init()
             .set_extended_filter(
                 1,
                 fdcan::extended_filter::ExtendedFilterMode::StoreRxFIFO0,

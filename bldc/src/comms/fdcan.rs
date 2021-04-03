@@ -112,13 +112,13 @@ impl<S: EnterInit> Fdcan<S> {
 
 impl Fdcan<Init> {
     pub fn set_extended_filter(
-        &mut self,
+        mut self,
         i: usize,
         mode: ExtendedFilterMode,
         filter_type: ExtendedFilterType,
         id1: u32,
         id2: u32,
-    ) -> &Self {
+    ) -> Self {
         let filter = &mut self.sram.extended_filters[i];
         filter
             .f0
@@ -129,7 +129,7 @@ impl Fdcan<Init> {
         self
     }
 
-    pub fn configure_protocol(&self) -> &Self {
+    pub fn configure_protocol(self) -> Self {
         self.peripheral.cccr.modify(|_, w| {
             w // Enable TX pause
                 .txp()
@@ -165,7 +165,7 @@ impl Fdcan<Init> {
         self
     }
 
-    pub fn configure_timing(&self) -> &Self {
+    pub fn configure_timing(self) -> Self {
         self.peripheral.nbtp.modify(|_, w| {
             // Safety: The stm32-rs package does not have an allowable range set for these fields,
             // so it's inherently unsafe to set arbitrary bits. For now these values are hard-coded
