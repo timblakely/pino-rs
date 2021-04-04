@@ -1,5 +1,5 @@
 //! FDCAN implementation
-use crate::block_while;
+use crate::{block_until, block_while};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
@@ -166,6 +166,9 @@ impl Fdcan<Init> {
     }
 
     pub fn configure_timing(self) -> Self {
+        // Set clock divider. This currently assumes we're running at full speed at 170MHz.
+        self.peripheral.ckdiv.modify(|_, w| w.pdiv().div1());
+        // Configure SDCAN timing.
         self.peripheral.nbtp.modify(|_, w| {
             // Safety: The stm32-rs package does not have an allowable range set for these fields,
             // so it's inherently unsafe to set arbitrary bits. For now these values are hard-coded
@@ -181,28 +184,101 @@ impl Fdcan<Init> {
                     .bits(5)
             }
         });
+        // Configure SDCAN timing.
         self.peripheral.dbtp.modify(|_, w| {
             // Safety: Same as above: the stm32-rs package does not have an allowable range set for
             // these fields.
             unsafe {
                 w.dbrp()
-                    .bits(0)
+                    .bits(1)
                     .dtseg1()
-                    .bits(32)
+                    .bits(4)
                     .dtseg2()
-                    .bits(10)
+                    .bits(3)
                     .dsjw()
-                    .bits(10)
+                    .bits(2)
             }
         });
         self
     }
 
+    pub fn fifo_mode(self) -> Self {
+        // FIFO mode.
+        self.peripheral.txbc.modify(|_, w| w.tfqm().fifo());
+        self
+    }
+
     pub fn start(self) -> Fdcan<Running> {
+        self.peripheral.cccr.modify(|_, w| w.init().run());
+        // Block until we know we're running.
+        block_until! { self.peripheral.cccr.read().init() == INIT_A::RUN };
         Fdcan {
             peripheral: self.peripheral,
             sram: self.sram,
             mode_state: Running,
         }
+    }
+}
+
+trait FdcanMessage {}
+
+pub trait StandardFdcanFrame {
+    fn id(&self) -> u16;
+    fn pack(&self, buffer: &mut [u32; 2]) -> u8;
+}
+pub trait ExtendedFdcanFrame {
+    fn id(&self) -> u32;
+    fn pack(&self, buffer: &mut [u32; 16]) -> u8;
+}
+
+// Just for testing; do not use in regular communication.
+struct DebugMessage {
+    foo: u32,
+    bar: f32,
+    baz: u8,
+    toot: &'static [u8; 3],
+}
+impl ExtendedFdcanFrame for DebugMessage {
+    fn id(&self) -> u32 {
+        3
+    }
+    fn pack(&self, buffer: &mut [u32; 16]) -> u8 {
+        buffer[0] = self.foo;
+        buffer[1] = self.bar.to_bits();
+        buffer[2] = (self.baz as u32) << 24 | (self.toot[2] as u32) << 16| (self.toot[1] as u32) << 8 | (self.toot[0] as u32);
+        3
+    }
+}
+
+impl Fdcan<Running> {
+    pub fn send_message(&mut self) -> &mut Self {
+        let message = DebugMessage {
+            foo: 123,
+            bar: 77.44,
+            baz: 8,
+            toot: b"ASD",
+        };
+        match self.next_tx() {
+            Some(idx) => {
+                self.sram.tx_buffers[idx].assign(&message);
+                self.peripheral
+                    .txbar
+                    .modify(|_, w| 
+                        // Safety: No enum associated with this in stm32-rs. Bit field corresponds
+                        // to which tx buffer is being used. 
+                        unsafe { w.ar().bits(1 << idx) })
+            }
+            // TODO(blakely): Some actual proper error handling here...
+            None => panic!("Couldn't get tx buffer"),
+        };
+
+        self
+    }
+
+    // TODO(blakely): Move to an actual TxFifo struct/impl
+    fn next_tx(&self) -> Option<usize> {
+        // TODO(blakely): Handle the case where we're sending too many messages at once and the FIFO
+        // can't keep up.
+        Some(self.peripheral.txfqs.read().tfqpi().bits() as usize)
     }
 }

@@ -149,6 +149,24 @@ pub mod macros {
     }
 
     #[macro_export]
+    macro_rules! writable_bits_bool {
+        ($n:ident) => {
+            paste::paste! {
+                impl<'a> [<$n _W>]<'a> {
+                    #[inline(always)]
+                    pub fn set_bit(self) -> &'a mut WriteProxy {
+                        unsafe { self.bits(1) }
+                    }
+                    #[inline(always)]
+                    pub fn clear_bit(self) -> &'a mut WriteProxy {
+                        unsafe { self.bits(0) }
+                    }
+                }
+            }
+        };
+    }
+
+    #[macro_export]
     macro_rules! writable_bits_safe {
         ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
             paste::paste! {
@@ -190,6 +208,10 @@ pub mod macros {
 
     #[macro_export]
     macro_rules! writable_field {
+        ($n:ident, $size:ty, 0b1, $offset:expr) => {
+            crate::writable_bits!($n, $size, 0b1, $offset);
+            crate::writable_bits_bool!($n);
+        };
         (bitsafe $n:ident, $size:ty, $mask:expr, $offset:expr) => {
             crate::writable_bits!($n, $size, $mask, $offset);
             crate::writable_bits_safe!($n, $size, $mask, $offset);
@@ -213,6 +235,10 @@ pub mod macros {
         ($n:ident, $size:ty, $mask:expr, $offset:expr, $variant:ident) => {
             crate::readable_field!($n, $size);
             crate::writable_field!($n, $size, $mask, $offset, $variant);
+        };
+        ($n:ident, $size:ty, 0b1, $offset:expr) => {
+            crate::readable_field!($n, $size);
+            crate::writable_field!($n, $size, 0b1, $offset);
         };
         ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
             crate::readable_field!($n, $size);

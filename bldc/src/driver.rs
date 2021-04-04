@@ -7,7 +7,7 @@ use third_party::m4vga_rs::util::armv7m::disable_irq;
 
 pub struct Controller<S> {
     #[allow(dead_code)]
-    mode_state: S,
+    pub mode_state: S,
 }
 
 pub struct Init {
@@ -18,7 +18,7 @@ pub struct Init {
 }
 
 pub struct Ready {
-    fdcan: fdcan::Fdcan<fdcan::Running>,
+    pub fdcan: fdcan::Fdcan<fdcan::Running>,
 }
 
 fn init(
@@ -78,7 +78,7 @@ impl Controller<Init> {
     pub fn configure_peripherals(self) -> Controller<Ready> {
         let gpioa = self.mode_state.gpioa;
 
-        // Configure GPIO pins
+        // Configure GPIOA pins
         // PA11 - FDCAN_RX, PUSHPULL, NOPULL, VERY_HIGH
         // PA12 - FDCAN_TX, PUSHPULL, NOPULL, VERY_HIGH
         gpioa.moder.modify(|_, w| {
@@ -112,11 +112,12 @@ impl Controller<Init> {
             .pupdr
             .modify(|_, w| w.pupdr11().floating().pupdr12().floating());
 
+        // Configure FDCAN
         // Make sure we don't receive any incoming messages before we're ready.
         disable_irq(device::Interrupt::FDCAN1_INTR0_IT);
-        // TODO(blakely): clean up this API.
-        let fdcan1 = fdcan::take(self.mode_state.fdcan)
+        let fdcan = fdcan::take(self.mode_state.fdcan)
             .enter_init()
+            // TODO(blakely): clean up this API.
             .set_extended_filter(
                 1,
                 fdcan::extended_filter::ExtendedFilterMode::StoreRxFIFO0,
@@ -125,12 +126,12 @@ impl Controller<Init> {
                 0x3,
             )
             .configure_protocol()
-            .configure_timing();
+            .configure_timing()
+            .fifo_mode()
+            .start();
 
         let new_self = Controller {
-            mode_state: Ready {
-                fdcan: fdcan1.start(),
-            },
+            mode_state: Ready { fdcan },
         };
         new_self
     }

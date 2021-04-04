@@ -12,7 +12,9 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let _foo = driver::take_hardware().configure_peripherals();
+    let mut controller = driver::take_hardware().configure_peripherals();
+
+    controller.mode_state.fdcan.send_message();
 
     // foo.gpioa.moder.modify(|_, w| w.moder5().output());
     // foo.gpioa.pupdr.modify(|_, w| w.pupdr5().floating());
