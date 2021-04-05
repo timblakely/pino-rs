@@ -109,7 +109,6 @@ impl<S: EnterInit> Fdcan<S> {
         }
     }
 }
-
 impl Fdcan<Init> {
     pub fn set_extended_filter(
         mut self,
@@ -173,6 +172,7 @@ impl Fdcan<Init> {
             // Safety: The stm32-rs package does not have an allowable range set for these fields,
             // so it's inherently unsafe to set arbitrary bits. For now these values are hard-coded
             // to known good values.
+            // 1MHz
             unsafe {
                 w.nbrp()
                     .bits(4)
@@ -188,15 +188,16 @@ impl Fdcan<Init> {
         self.peripheral.dbtp.modify(|_, w| {
             // Safety: Same as above: the stm32-rs package does not have an allowable range set for
             // these fields.
+            // 5MHz
             unsafe {
                 w.dbrp()
-                    .bits(1)
+                    .bits(0)
                     .dtseg1()
-                    .bits(4)
+                    .bits(21)
                     .dtseg2()
-                    .bits(3)
+                    .bits(10)
                     .dsjw()
-                    .bits(2)
+                    .bits(10)
             }
         });
         self
@@ -240,12 +241,16 @@ struct DebugMessage {
 }
 impl ExtendedFdcanFrame for DebugMessage {
     fn id(&self) -> u32 {
-        3
+        0xA
     }
     fn pack(&self, buffer: &mut [u32; 16]) -> u8 {
         buffer[0] = self.foo;
         buffer[1] = self.bar.to_bits();
-        buffer[2] = (self.baz as u32) << 24 | (self.toot[2] as u32) << 16| (self.toot[1] as u32) << 8 | (self.toot[0] as u32);
+        buffer[2] = 
+            (self.baz as u32) << 24 |
+            (self.toot[2] as u32) << 16 |
+            (self.toot[1] as u32) << 8 |
+            (self.toot[0] as u32);
         3
     }
 }

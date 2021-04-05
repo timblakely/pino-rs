@@ -16,17 +16,6 @@ fn main() -> ! {
 
     controller.mode_state.fdcan.send_message();
 
-    // foo.gpioa.moder.modify(|_, w| w.moder5().output());
-    // foo.gpioa.pupdr.modify(|_, w| w.pupdr5().floating());
-    // foo.gpioa.otyper.modify(|_, w| w.ot5().clear_bit());
-    // foo.gpioa
-    //     .ospeedr
-    //     .modify(|_, w| w.ospeedr5().very_high_speed());
-
-    // foo.gpioa.bsrr.write(|w| w.bs5().set_bit());
-
-    // let mut systick = foo.syst;
-
     // systick.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
     // systick.set_reload(170000);
     // systick.clear_current();
