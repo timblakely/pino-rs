@@ -2,6 +2,8 @@
 #![no_main]
 
 use bldc::driver;
+use stm32g4::stm32g474::{self as device, interrupt};
+use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
@@ -13,8 +15,6 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let mut controller = driver::take_hardware().configure_peripherals();
-
-    controller.mode_state.fdcan.send_message();
 
     // systick.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
     // systick.set_reload(170000);
@@ -39,5 +39,13 @@ fn main() -> ! {
     //     // iprintln!(stim, "Second tick");
     // }
 
+    // let asdf = &FDCAN1_INTR0_IT;
+
     loop {}
+}
+
+#[interrupt]
+fn FDCAN1_INTR0_IT() {
+    bldc::comms::fdcan::fdcan1_tx_isr();
+    clear_pending_irq(device::Interrupt::FDCAN1_INTR0_IT);
 }

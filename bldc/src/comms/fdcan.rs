@@ -209,6 +209,18 @@ impl Fdcan<Init> {
         self
     }
 
+    pub fn configure_interrupts(self) -> Self {
+        // Send all interrupts to INT0 (all bits zero aka reset value)
+        // Why does ST make 0=INT1 and 1=INT0?!
+        self.peripheral.ils.modify(|_, w| w.tferr().set_bit().smsg().set_bit());
+        // Catch transmit complete.
+        self.peripheral.ie.modify(|_, w| w.tce().set_bit().tefne().set_bit());
+        // Enable the interrupt generation for INT0.
+        // _WHYYYYYYYYY IS INT0 MAPPED TO EINT1?!?!?!?!?!?!??!?!?!?!?!?!?!?_
+        self.peripheral.ile.modify(|_, w| w.eint1().set_bit());
+        self
+    }
+
     pub fn start(self) -> Fdcan<Running> {
         self.peripheral.cccr.modify(|_, w| w.init().run());
         // Block until we know we're running.
@@ -220,8 +232,6 @@ impl Fdcan<Init> {
         }
     }
 }
-
-trait FdcanMessage {}
 
 pub trait StandardFdcanFrame {
     fn id(&self) -> u16;
@@ -286,4 +296,25 @@ impl Fdcan<Running> {
         // can't keep up.
         Some(self.peripheral.txfqs.read().tfqpi().bits() as usize)
     }
+
+    pub fn donate(mut self) -> device::FDCAN1 {
+        self.peripheral
+    }
+}
+
+
+use third_party::m4vga_rs::util::sync;
+use crate::driver::FDCANSHARE;
+
+pub fn fdcan1_tx_isr() {
+    let share = sync::acquire_hw(&FDCANSHARE);
+
+    let fdcan = &share.fdcan;
+    let idx = fdcan.txefs.read().efgi().bits();
+    fdcan.txefa.modify(|_, w| 
+        // Safety: Upstream: not restricted to enum or range in stm32-rs.
+        unsafe {w.efai().bits(idx)});
+    // TODO(blakely): Actually check for Tx errors
+    // Ack the Tx interrupts
+    fdcan.ir.modify(|_, w| w.tfe().set_bit().tefn().set_bit());
 }

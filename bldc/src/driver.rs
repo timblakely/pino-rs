@@ -3,7 +3,7 @@ use stm32g4::stm32g474 as device;
 
 use crate::comms::fdcan;
 use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
-use third_party::m4vga_rs::util::armv7m::disable_irq;
+use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
 pub struct Controller<S> {
     #[allow(dead_code)]
@@ -17,12 +17,10 @@ pub struct Init {
     pub gpioc: device::GPIOC,
 }
 
-pub struct Ready {
-    pub fdcan: fdcan::Fdcan<fdcan::Running>,
-}
+pub struct Ready {}
 
 fn init(
-    _nvic: cm::NVIC,
+    mut nvic: cm::NVIC,
     rcc: device::RCC,
     flash: device::FLASH,
     pwr: device::PWR,
@@ -32,6 +30,9 @@ fn init(
     fdcan: device::FDCAN1,
 ) -> Controller<Init> {
     disable_dead_battery_pd(&pwr);
+
+    // Make sure we don't receive any interrupts before we're ready.
+    disable_irq(device::Interrupt::FDCAN1_INTR0_IT);
 
     // Set up the core, AHB, and peripheral buses.
     clock_setup(&pwr, &rcc, &flash, &G4_CLOCK_SETUP);
@@ -63,6 +64,16 @@ fn init(
     rcc.apb2enr.modify(|_, w| w.spi1en().set_bit());
     // Turn on SPI3 (DRV8323RS) clock.
     rcc.apb1enr1.modify(|_, w| w.spi3en().set_bit());
+
+    // Configure interrupt priorities.
+    // Safety: messing with interrupt priorities is inherently unsafe, but we disabled our device
+    // interrupts above.
+    unsafe {
+        nvic.set_priority(device::Interrupt::FDCAN1_INTR0_IT, 0x10);
+        // nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0x10);
+    }
+
+    enable_irq(device::Interrupt::FDCAN1_INTR0_IT);
 
     Controller {
         mode_state: Init {
@@ -113,9 +124,7 @@ impl Controller<Init> {
             .modify(|_, w| w.pupdr11().floating().pupdr12().floating());
 
         // Configure FDCAN
-        // Make sure we don't receive any incoming messages before we're ready.
-        disable_irq(device::Interrupt::FDCAN1_INTR0_IT);
-        let fdcan = fdcan::take(self.mode_state.fdcan)
+        let mut fdcan = fdcan::take(self.mode_state.fdcan)
             .enter_init()
             // TODO(blakely): clean up this API.
             .set_extended_filter(
@@ -127,15 +136,27 @@ impl Controller<Init> {
             )
             .configure_protocol()
             .configure_timing()
+            .configure_interrupts()
             .fifo_mode()
             .start();
+        fdcan.send_message();
+        *FDCANSHARE.try_lock().unwrap() = Some(FdcanShared {
+            fdcan: fdcan.donate(),
+        });
 
         let new_self = Controller {
-            mode_state: Ready { fdcan },
+            mode_state: Ready {},
         };
         new_self
     }
 }
+
+pub struct FdcanShared {
+    pub fdcan: device::FDCAN1,
+}
+
+use third_party::m4vga_rs::util::spin_lock::SpinLock;
+pub static FDCANSHARE: SpinLock<Option<FdcanShared>> = SpinLock::new(None);
 
 pub fn take_hardware() -> Controller<Init> {
     let cp = cm::Peripherals::take().unwrap();
