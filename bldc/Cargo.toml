@@ -15,6 +15,7 @@ paste = "1.0"
 panic-itm = {version = "0.4.2", optional = true}
 third_party = {path = "../third_party"}
 static_assertions = "1.1.0"
+ringbuffer = {verstion = "0.5.1", default-features = false}
 
 [features]
 default = ["panic-itm"]

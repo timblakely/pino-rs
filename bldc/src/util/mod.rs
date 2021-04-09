@@ -1,3 +1,3 @@
-pub mod stm32;
-
 pub mod bitfield;
+pub mod interrupts;
+pub mod stm32;

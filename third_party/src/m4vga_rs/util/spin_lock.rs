@@ -69,8 +69,8 @@ impl<T: ?Sized + Send> SpinLock<T> {
 
 #[must_use = "if dropped, the spinlock will immediately unlock"]
 #[derive(Debug)]
-pub struct SpinLockGuard<'a, T: ?Sized> {
-    locked: LockBorrow<'a>,
+pub struct SpinLockGuard<'a, T: ?Sized, G = LockBorrow<'a>> {
+    locked: G,
     contents: &'a mut T,
 }
 
@@ -78,7 +78,7 @@ pub struct SpinLockGuard<'a, T: ?Sized> {
 /// type is distinct from `SpinLockGuard` so that the latter can be consumed and
 /// reconstructed by `map` -- something that is not allowed for `Drop` types.
 #[derive(Debug)]
-struct LockBorrow<'a>(&'a AtomicBool);
+pub struct LockBorrow<'a>(&'a AtomicBool);
 
 impl<'a, T: ?Sized> SpinLockGuard<'a, T> {
     /// Replaces a guard of `T` with a guard of some portion of `T`. This is

@@ -58,3 +58,16 @@ pub struct RxFifo {
     r1: r1::R1,
     data: [u32; 16],
 }
+
+impl RxFifo {
+    pub fn data(&self) -> &[u32; 16] {
+        &self.data
+    }
+    pub fn id(&self) -> u32 {
+        let r0 = self.r0.read();
+        match r0.extended().bits() {
+            0 => r0.standard_id().bits() as u32,
+            _ => r0.extended_id().bits(),
+        }
+    }
+}

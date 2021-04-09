@@ -1,7 +1,7 @@
 use cortex_m::peripheral as cm;
 use stm32g4::stm32g474 as device;
 
-use crate::comms::fdcan;
+use crate::comms::fdcan::{self, Sram, FDCANSHARE, FDCAN_RECEIVE_BUF};
 use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
@@ -33,6 +33,7 @@ fn init(
 
     // Make sure we don't receive any interrupts before we're ready.
     disable_irq(device::Interrupt::FDCAN1_INTR0_IT);
+    disable_irq(device::Interrupt::FDCAN1_INTR1_IT);
 
     // Set up the core, AHB, and peripheral buses.
     clock_setup(&pwr, &rcc, &flash, &G4_CLOCK_SETUP);
@@ -70,10 +71,8 @@ fn init(
     // interrupts above.
     unsafe {
         nvic.set_priority(device::Interrupt::FDCAN1_INTR0_IT, 0x10);
-        // nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0x10);
+        nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0x10);
     }
-
-    enable_irq(device::Interrupt::FDCAN1_INTR0_IT);
 
     Controller {
         mode_state: Init {
@@ -128,11 +127,11 @@ impl Controller<Init> {
             .enter_init()
             // TODO(blakely): clean up this API.
             .set_extended_filter(
-                1,
+                0,
                 fdcan::extended_filter::ExtendedFilterMode::StoreRxFIFO0,
-                fdcan::extended_filter::ExtendedFilterType::Dual,
+                fdcan::extended_filter::ExtendedFilterType::Classic,
                 0x1,
-                0x3,
+                0xFFF_FFFF,
             )
             .configure_protocol()
             .configure_timing()
@@ -140,9 +139,14 @@ impl Controller<Init> {
             .fifo_mode()
             .start();
         fdcan.send_message();
-        *FDCANSHARE.try_lock().unwrap() = Some(FdcanShared {
-            fdcan: fdcan.donate(),
-        });
+        *FDCANSHARE.try_lock().unwrap() = Some(fdcan.donate());
+
+        fdcan::init_receive_buf();
+
+        // Tx IRQ
+        enable_irq(device::Interrupt::FDCAN1_INTR0_IT);
+        // Rx IRQ
+        enable_irq(device::Interrupt::FDCAN1_INTR1_IT);
 
         let new_self = Controller {
             mode_state: Ready {},
@@ -152,11 +156,9 @@ impl Controller<Init> {
 }
 
 pub struct FdcanShared {
+    pub sram: Sram,
     pub fdcan: device::FDCAN1,
 }
-
-use third_party::m4vga_rs::util::spin_lock::SpinLock;
-pub static FDCANSHARE: SpinLock<Option<FdcanShared>> = SpinLock::new(None);
 
 pub fn take_hardware() -> Controller<Init> {
     let cp = cm::Peripherals::take().unwrap();

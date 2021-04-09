@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "array-init"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6945cc5422176fc5e602e590c2878d2c2acd9a4fe20a4baa7c28022521698ec6"
+
+[[package]]
 name = "bare-metal"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -26,6 +32,7 @@ dependencies = [
  "cortex-m-semihosting",
  "panic-itm",
  "paste",
+ "ringbuffer",
  "static_assertions",
  "stm32g4",
  "third_party",
@@ -137,6 +144,15 @@ name = "r0"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2a38df5b15c8d5c7e8654189744d8e396bddc18ad48041a500ce52d6948941f"
+
+[[package]]
+name = "ringbuffer"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2eab99652333b5c39a8c17447abf1e7465616f5a0f4a44d661d07fa115c42b0"
+dependencies = [
+ "array-init",
+]
 
 [[package]]
 name = "rustc_version"

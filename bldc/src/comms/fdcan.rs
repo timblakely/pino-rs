@@ -1,11 +1,14 @@
 //! FDCAN implementation
-use crate::{block_until, block_while};
+use crate::{block_until, block_while, driver::FdcanShared};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
+use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
+use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
 use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A};
+use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
 pub mod extended_filter;
 pub mod rx_fifo;
@@ -28,6 +31,7 @@ const_assert!(core::mem::size_of::<SramBlock>() == 0x350usize);
 pub struct Sram {
     _marker: PhantomData<*const ()>,
 }
+unsafe impl Send for Sram {}
 impl Sram {
     pub const fn ptr() -> *const SramBlock {
         0x4000_A400 as *const _
@@ -210,14 +214,25 @@ impl Fdcan<Init> {
     }
 
     pub fn configure_interrupts(self) -> Self {
-        // Send all interrupts to INT0 (all bits zero aka reset value)
         // Why does ST make 0=INT1 and 1=INT0?!
-        self.peripheral.ils.modify(|_, w| w.tferr().set_bit().smsg().set_bit());
-        // Catch transmit complete.
-        self.peripheral.ie.modify(|_, w| w.tce().set_bit().tefne().set_bit());
-        // Enable the interrupt generation for INT0.
         // _WHYYYYYYYYY IS INT0 MAPPED TO EINT1?!?!?!?!?!?!??!?!?!?!?!?!?!?_
-        self.peripheral.ile.modify(|_, w| w.eint1().set_bit());
+        self.peripheral.ils.modify(|_, w| {
+            w
+                // Tx event+error notifications on INT0
+                .tferr()
+                .set_bit()
+                // Rx event on INT1
+                .rxfifo0()
+                .clear_bit()
+        });
+        // Enable Tx and Rx events
+        self.peripheral
+            .ie
+            .modify(|_, w| w.tefne().set_bit().rf0ne().set_bit());
+        // Enable both FDCAN interrupts.
+        self.peripheral
+            .ile
+            .modify(|_, w| w.eint0().set_bit().eint1().set_bit());
         self
     }
 
@@ -256,11 +271,10 @@ impl ExtendedFdcanFrame for DebugMessage {
     fn pack(&self, buffer: &mut [u32; 16]) -> u8 {
         buffer[0] = self.foo;
         buffer[1] = self.bar.to_bits();
-        buffer[2] = 
-            (self.baz as u32) << 24 |
-            (self.toot[2] as u32) << 16 |
-            (self.toot[1] as u32) << 8 |
-            (self.toot[0] as u32);
+        buffer[2] = (self.baz as u32) << 24
+            | (self.toot[2] as u32) << 16
+            | (self.toot[1] as u32) << 8
+            | (self.toot[0] as u32);
         3
     }
 }
@@ -276,11 +290,9 @@ impl Fdcan<Running> {
         match self.next_tx() {
             Some(idx) => {
                 self.sram.tx_buffers[idx].assign(&message);
-                self.peripheral
-                    .txbar
-                    .modify(|_, w| 
+                self.peripheral.txbar.modify(|_, w|
                         // Safety: No enum associated with this in stm32-rs. Bit field corresponds
-                        // to which tx buffer is being used. 
+                        // to which tx buffer is being used.
                         unsafe { w.ar().bits(1 << idx) })
             }
             // TODO(blakely): Some actual proper error handling here...
@@ -297,24 +309,95 @@ impl Fdcan<Running> {
         Some(self.peripheral.txfqs.read().tfqpi().bits() as usize)
     }
 
-    pub fn donate(mut self) -> device::FDCAN1 {
-        self.peripheral
+    pub fn donate(mut self) -> FdcanShared {
+        FdcanShared {
+            fdcan: self.peripheral,
+            sram: self.sram,
+        }
     }
 }
 
-
-use third_party::m4vga_rs::util::sync;
-use crate::driver::FDCANSHARE;
-
 pub fn fdcan1_tx_isr() {
-    let share = sync::acquire_hw(&FDCANSHARE);
+    let fdcan = &sync::acquire_hw(&FDCANSHARE).fdcan;
+    let get_idx = fdcan.txefs.read().efgi().bits();
+    // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
+    // value retrieved from the get index it's fine.
+    fdcan.txefa.modify(|_, w| unsafe { w.efai().bits(get_idx) });
 
-    let fdcan = &share.fdcan;
-    let idx = fdcan.txefs.read().efgi().bits();
-    fdcan.txefa.modify(|_, w| 
-        // Safety: Upstream: not restricted to enum or range in stm32-rs.
-        unsafe {w.efai().bits(idx)});
     // TODO(blakely): Actually check for Tx errors
     // Ack the Tx interrupts
     fdcan.ir.modify(|_, w| w.tfe().set_bit().tefn().set_bit());
+}
+
+pub fn fdcan1_rx_isr() {
+    let shared = &sync::acquire_hw(&FDCANSHARE);
+
+    // Figure out get index
+    let get_idx = shared.fdcan.rxf0s.read().f0gi().bits();
+    {
+        // Lock the receive buffer. Technically only used in the main thread, but good practice to
+        // drop locks as soon as you can.
+        let mut guard = FDCAN_RECEIVE_BUF
+            .try_lock()
+            .expect("FDCAN rx ISR can't lock receive buffer");
+        let receive_buf = guard
+            .as_mut()
+            .expect("FDCAN RX ISR handled prior to populating buffer");
+        let rx_buffer = &shared.sram.rx_fifo0[get_idx as usize];
+        (*receive_buf).push(ReceivedMessage {
+            id: rx_buffer.id(),
+            data: *rx_buffer.data(),
+        });
+    }
+    // Acknowledge the peripheral that we've read the message.
+    // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
+    // value retrieved from the get index it's fine.
+    shared
+        .fdcan
+        .rxf0a
+        .modify(|_, w| unsafe { w.f0ai().bits(get_idx) });
+    // Finally, clear the fact that we've received an RxFIFO0 interrupt
+    shared.fdcan.ir.modify(|_, w| w.rf0n().set_bit());
+}
+
+#[derive(Debug)]
+pub struct ReceivedMessage {
+    pub id: u32,
+    pub data: [u32; 16],
+}
+
+type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<ReceivedMessage, 16>;
+
+pub static FDCAN_RECEIVE_BUF: SpinLock<Option<ReceiveBuffer>> = SpinLock::new(None);
+
+pub static FDCANSHARE: SpinLock<Option<FdcanShared>> = SpinLock::new(None);
+
+fn init_buffer() -> ReceiveBuffer {
+    static TAKEN: AtomicBool = AtomicBool::new(false);
+
+    if TAKEN.swap(true, Ordering::AcqRel) {
+        panic!("RingBuffer attempted to be acquired twice");
+    }
+    static mut uninit_buffer: MaybeUninit<ReceiveBuffer> = MaybeUninit::uninit();
+
+    // Safety: Conv
+    let buf: &mut [MaybeUninit<u8>; core::mem::size_of::<ReceiveBuffer>()] =
+        unsafe { core::mem::transmute(&mut uninit_buffer) };
+
+    for byte in buf.iter_mut() {
+        // Safety: We're using a raw pointer here so that we never create even a _temporary_
+        // reference to uninitialized memory. Since this is more complicated than a simple array,
+        // this is the best way to ensure that the memory is truly zero'd prior to use, the way that
+        // ConstGenericRingBuffer expects.
+        unsafe {
+            byte.as_mut_ptr().write(0);
+        }
+    }
+
+    // Safety: The entire buffer is initialized to zero, just like ConstGenericRingBuffer expects.
+    unsafe { core::mem::transmute(*buf) }
+}
+
+pub fn init_receive_buf() {
+    *FDCAN_RECEIVE_BUF.try_lock().unwrap() = Some(init_buffer());
 }
