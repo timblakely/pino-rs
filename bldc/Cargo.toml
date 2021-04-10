@@ -15,7 +15,7 @@ paste = "1.0"
 panic-itm = {version = "0.4.2", optional = true}
 third_party = {path = "../third_party"}
 static_assertions = "1.1.0"
-ringbuffer = {verstion = "0.5.1", default-features = false}
+ringbuffer = {version = "0.5.1", default-features = false}
 
 [features]
 default = ["panic-itm"]
@@ -30,16 +30,6 @@ features = ["stm32g474", "rt"]
 # upstream. Until then, use my local version.
 path = "../../stm32-rs/stm32g4"
 
-
-# Uncomment for the allocator example.
-# alloc-cortex-m = "0.4.0"
-
-# Uncomment for the device example.
-# Update `memory.x`, set target to `thumbv7em-none-eabihf` in `.cargo/config`,
-# and then use `cargo build --examples device` to build it.
-# [dependencies.stm32f3]
-# features = ["stm32f303", "rt"]
-# version = "0.7.1"
 
 # this lets you use `cargo fix`!
 [[bin]]

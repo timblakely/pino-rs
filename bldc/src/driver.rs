@@ -1,7 +1,7 @@
 use cortex_m::peripheral as cm;
 use stm32g4::stm32g474 as device;
 
-use crate::comms::fdcan::{self, Sram, FDCANSHARE, FDCAN_RECEIVE_BUF};
+use crate::comms::fdcan::{self, Sram, FDCANSHARE};
 use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
@@ -141,7 +141,6 @@ impl Controller<Init> {
         fdcan.send_message();
         *FDCANSHARE.try_lock().unwrap() = Some(fdcan.donate());
 
-        fdcan::init_receive_buf();
         fdcan::init_receive_buf();
 
         // Tx IRQ
