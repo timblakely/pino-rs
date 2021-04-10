@@ -142,6 +142,7 @@ impl Controller<Init> {
         *FDCANSHARE.try_lock().unwrap() = Some(fdcan.donate());
 
         fdcan::init_receive_buf();
+        fdcan::init_receive_buf();
 
         // Tx IRQ
         enable_irq(device::Interrupt::FDCAN1_INTR0_IT);

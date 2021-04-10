@@ -367,12 +367,11 @@ pub struct ReceivedMessage {
 }
 
 type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<ReceivedMessage, 16>;
-
-pub static FDCAN_RECEIVE_BUF: SpinLock<Option<ReceiveBuffer>> = SpinLock::new(None);
+pub static FDCAN_RECEIVE_BUF: SpinLock<Option<&'static mut ReceiveBuffer>> = SpinLock::new(None);
 
 pub static FDCANSHARE: SpinLock<Option<FdcanShared>> = SpinLock::new(None);
 
-fn init_buffer() -> ReceiveBuffer {
+fn init_buffer() -> &'static mut ReceiveBuffer {
     static TAKEN: AtomicBool = AtomicBool::new(false);
 
     if TAKEN.swap(true, Ordering::AcqRel) {
@@ -395,7 +394,7 @@ fn init_buffer() -> ReceiveBuffer {
     }
 
     // Safety: The entire buffer is initialized to zero, just like ConstGenericRingBuffer expects.
-    unsafe { core::mem::transmute(*buf) }
+    unsafe { core::mem::transmute(buf) }
 }
 
 pub fn init_receive_buf() {

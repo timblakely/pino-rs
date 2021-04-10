@@ -3,5 +3,4 @@
     100
   ],
   "rewrap.autoWrap.enabled": true,
-  "rust-analyzer.inlayHints.enable": false
 }
