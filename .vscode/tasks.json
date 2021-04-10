@@ -1,33 +1,52 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558 
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
     // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
         {
-            /*
-             * This is the default cargo build task,
-             * but we need to provide a label for it,
-             * so we can invoke it from the debug launcher.
-             */
-            "label": "Cargo Build (debug)",
+            "label": "Cargo Build Debug",
             "type": "process",
             "command": "cargo",
-            "args": ["build"],
+            "args": [
+                "build"
+            ],
             "problemMatcher": [
                 "$rustc"
             ],
+            "group": "build"
+        },
+        {
+            "label": "Cargo Size Debug",
+            "type": "process",
+            "command": "cargo",
+            "args": [
+                "size"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+        },
+        {
+            "label": "Build debug",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Cargo Build Debug",
+                "Cargo Size Debug",
+            ],
+            "problemMatcher": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
-            },
-            // Enable macro tracing
-            // "options": {"env": {"RUSTFLAGS": "-Z macro-backtrace"}}
+            }
         },
         {
             "label": "Cargo Build (release)",
             "type": "process",
             "command": "cargo",
-            "args": ["build", "--release"],
+            "args": [
+                "build",
+                "--release"
+            ],
             "problemMatcher": [
                 "$rustc"
             ],
@@ -37,7 +56,10 @@
             "label": "Cargo Build Examples (debug)",
             "type": "process",
             "command": "cargo",
-            "args": ["build","--examples"],
+            "args": [
+                "build",
+                "--examples"
+            ],
             "problemMatcher": [
                 "$rustc"
             ],
@@ -47,7 +69,11 @@
             "label": "Cargo Build Examples (release)",
             "type": "process",
             "command": "cargo",
-            "args": ["build","--examples", "--release"],
+            "args": [
+                "build",
+                "--examples",
+                "--release"
+            ],
             "problemMatcher": [
                 "$rustc"
             ],
@@ -57,9 +83,11 @@
             "label": "Cargo Clean",
             "type": "process",
             "command": "cargo",
-            "args": ["clean"],
+            "args": [
+                "clean"
+            ],
             "problemMatcher": [],
             "group": "build"
-        },
+        }
     ]
 }
