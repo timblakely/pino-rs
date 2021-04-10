@@ -309,7 +309,7 @@ impl Fdcan<Running> {
         Some(self.peripheral.txfqs.read().tfqpi().bits() as usize)
     }
 
-    pub fn donate(mut self) -> FdcanShared {
+    pub fn donate(self) -> FdcanShared {
         FdcanShared {
             fdcan: self.peripheral,
             sram: self.sram,
@@ -377,24 +377,15 @@ fn init_buffer() -> &'static mut ReceiveBuffer {
     if TAKEN.swap(true, Ordering::AcqRel) {
         panic!("RingBuffer attempted to be acquired twice");
     }
-    static mut uninit_buffer: MaybeUninit<ReceiveBuffer> = MaybeUninit::uninit();
-
-    // Safety: Conv
-    let buf: &mut [MaybeUninit<u8>; core::mem::size_of::<ReceiveBuffer>()] =
-        unsafe { core::mem::transmute(&mut uninit_buffer) };
-
-    for byte in buf.iter_mut() {
-        // Safety: We're using a raw pointer here so that we never create even a _temporary_
-        // reference to uninitialized memory. Since this is more complicated than a simple array,
-        // this is the best way to ensure that the memory is truly zero'd prior to use, the way that
-        // ConstGenericRingBuffer expects.
-        unsafe {
-            byte.as_mut_ptr().write(0);
-        }
-    }
-
-    // Safety: The entire buffer is initialized to zero, just like ConstGenericRingBuffer expects.
-    unsafe { core::mem::transmute(buf) }
+    static mut UNINIT_BUFFER: MaybeUninit<ReceiveBuffer> = MaybeUninit::uninit();
+    // Safety: we're effectively writing zeros to an arbitrary place in memory, but
+    // `MaybeUninit::uninit` reserves enough space for a `ReceiveBuffer`, and
+    // `MaybeUninit::zeroed()` knows exactly how many bytes need to be zeroed.
+    unsafe { UNINIT_BUFFER = MaybeUninit::zeroed() };
+    // Safety: Now that the buffer is zeroed, we derefernce the `MaybeUninit<ReceiveBuffer>` - which
+    // is unsafe - but since it's statically allocated it's alright to return its address since it's
+    // guaranteed not to change.
+    unsafe { &mut *UNINIT_BUFFER.as_mut_ptr() }
 }
 
 pub fn init_receive_buf() {
