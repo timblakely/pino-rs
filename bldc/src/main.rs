@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use bldc::driver;
+use bldc::{block_while, driver};
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
@@ -15,7 +15,15 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let _controller = driver::take_hardware().configure_peripherals();
+    let controller = driver::take_hardware().configure_peripherals();
+    let spi = &controller.mode_state.spi1;
+    let foo: *mut u16 = 0x4001300c as *mut u16;
+    spi.dr.write(|w| w.dr().bits(0b1010001111000101));
+    spi.cr1.modify(|_, w| w.spe().set_bit());
+
+    spi.dr.write(|w| w.dr().bits(0b1010001111000101));
+    // block_while! { spi.sr.read().bsy().bit_is_set() }
+    // spi.cr1.modify(|_, w| w.spe().clear_bit());
 
     // systick.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
     // systick.set_reload(170000);

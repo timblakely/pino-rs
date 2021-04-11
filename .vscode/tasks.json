@@ -20,8 +20,10 @@
             "type": "process",
             "command": "cargo",
             "args": [
-                "size"
+                "size",
+                "-q"
             ],
+            // "options": {"env": {"RUSTFLAGS": "-Awarnings"}},
             "problemMatcher": [
                 "$rustc"
             ],
