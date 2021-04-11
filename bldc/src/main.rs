@@ -16,39 +16,6 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let controller = driver::take_hardware().configure_peripherals();
-    let spi = &controller.mode_state.spi1;
-    let foo: *mut u16 = 0x4001300c as *mut u16;
-    spi.dr.write(|w| w.dr().bits(0b1010001111000101));
-    spi.cr1.modify(|_, w| w.spe().set_bit());
-
-    spi.dr.write(|w| w.dr().bits(0b1010001111000101));
-    // block_while! { spi.sr.read().bsy().bit_is_set() }
-    // spi.cr1.modify(|_, w| w.spe().clear_bit());
-
-    // systick.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
-    // systick.set_reload(170000);
-    // systick.clear_current();
-    // systick.enable_counter();
-    // loop {
-    //     let mut toot = 0;
-    //     while toot < 500 {
-    //         while !systick.has_wrapped() {
-    //             // loop until it's wrapped
-    //         }
-    //         toot += 1;
-    //     }
-    //     foo.gpioa.bsrr.write(|w| w.bs5().set_bit());
-    //     while toot < 1000 {
-    //         while !systick.has_wrapped() {
-    //             // loop until it's wrapped
-    //         }
-    //         toot += 1;
-    //     }
-    //     foo.gpioa.bsrr.write(|w| w.br5().set_bit());
-    //     // iprintln!(stim, "Second tick");
-    // }
-
-    // let asdf = &FDCAN1_INTR0_IT;
 
     loop {
         // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing - the
@@ -66,7 +33,7 @@ fn main() -> ! {
                     let _asdf = message;
                 }
             },
-        )
+        );
     }
 }
 
