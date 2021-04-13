@@ -101,7 +101,7 @@ pub mod macros {
             #[inline(always)]
             paste::paste! {
                 pub fn $fn(&self) -> [<$n _R>] {
-                    [<$n _R>]::new(((self.bits >> $offset) & $mask) as $size)
+                    [<$n _R>]::new((((self.bits >> $offset) & $mask) as $size).into())
                 }
             }
         };
@@ -140,7 +140,7 @@ pub mod macros {
                 impl<'a> [<$n _W>]<'a> {
                     #[inline(always)]
                     pub unsafe fn bits(self, value: $size) -> &'a mut WriteProxy {
-                        self.w.bits = (self.w.bits & !($mask << $offset)) | (((value as u32) & $mask) << $offset);
+                        self.w.bits = ((self.w.bits as u32 & !($mask << $offset)) | (((value as u32) & $mask) << $offset)) as _;
                         self.w
                     }
                 }

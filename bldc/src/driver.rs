@@ -1,5 +1,6 @@
 use crate::{
     block_while,
+    ic::drv8323rs::{self, Drv8323rs},
     ic::ma702::{self, Ma702, Streaming},
 };
 use cortex_m::peripheral as cm;
@@ -235,6 +236,13 @@ impl Controller<Init> {
         let ma702 = ma702::new(self.mode_state.spi1)
             .configure_spi()
             .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
+
+        let drv = drv8323rs::new(self.mode_state.spi3).configure_spi();
+
+        // ReadProxy = bitfield::ReadProxy<u32, FaultStatus1>
+        // FaultStatus1 = bitfield::Bitfield<u16, _FaultStatus1>
+        let foo = drv.fault_status_1().read();
+        let asdf = drv.fault_status_1().read().over_temp().bits();
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)

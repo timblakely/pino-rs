@@ -45,7 +45,7 @@ mod e1 {
     readwrite_field!(EDL, u8, 0b1, 21);
     readwrite_field!(BRS, u8, 0b1, 20);
     readwrite_field!(DLC, u8, 0b1111, 16);
-    readwrite_field!(TXTS, u8, 0xFFFF, 0);
+    readwrite_field!(TXTS, u16, 0xFFFF, 0);
 
     impl ReadProxy {
         readable_accessor!(message_marker, MM, u8, 0xFF, 24);
