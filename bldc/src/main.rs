@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use bldc::{block_while, driver};
+use bldc::driver;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
@@ -34,6 +34,8 @@ fn main() -> ! {
                 }
             },
         );
+        let angle = controller.mode_state.ma702.angle();
+        let _asdf = angle;
     }
 }
 

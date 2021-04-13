@@ -1,4 +1,7 @@
-use crate::block_while;
+use crate::{
+    block_while,
+    ic::ma702::{self, Ma702, Streaming},
+};
 use cortex_m::peripheral as cm;
 use stm32g4::stm32g474 as device;
 
@@ -27,7 +30,7 @@ pub struct Init {
 }
 
 pub struct Ready {
-    pub spi1: device::SPI1,
+    pub ma702: Ma702<Streaming>,
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -120,9 +123,6 @@ fn init(
         },
     }
 }
-
-pub static mut TOOT: u16 = 1;
-pub static mut MA702_REQUEST_ANGLE: u16 = 0;
 
 impl Controller<Init> {
     // TODO(blakely): Move into a device-specific, feature-guarded trait
@@ -228,97 +228,13 @@ impl Controller<Init> {
         tim3.arr.write(|w| unsafe { w.arr().bits(42500) });
     }
 
-    fn configure_dma(&self) {
-        // Configure DMA1 stream 1 to transfer a `0` into `SPI1[DR]` to trigger an SPI transaction,
-        // off the update event from tim3.
-        let dma = &self.mode_state.dma1;
-        // Disable DMA channel if it's enabled.
-        dma.ccr1.modify(|_, w| w.en().clear_bit());
-        block_until!(dma.ccr1.read().en().bit_is_clear());
-        // Configure for memory-to-peripheral mode @ 16-bit. Don't change address for either memory
-        // or peripheral.
-        dma.ccr1.modify(|_, w| unsafe {
-            // Safety: Upstream: This should be a 2-bit enum. 0b01 = 16-bit
-            w.msize()
-                .bits(0b01)
-                // Safety: Upstream: This should be a 2-bit enum. 0b01 = 16-bit
-                .psize()
-                .bits(0b01)
-                .minc()
-                .clear_bit()
-                .pinc()
-                .clear_bit()
-                .circ()
-                .set_bit()
-                .dir()
-                .set_bit()
-        });
-        // Just transfer a single value
-        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs.
-        dma.cndtr1.write(|w| unsafe { w.ndt().bits(1) });
-        // Target memory location
-        {
-            // Safety: This is the source of the DMA stream. We've configured it for 16-bit
-            // and the address we're taking is a `u16`
-            dma.cmar1
-                .write(|w| unsafe { w.ma().bits(((&MA702_REQUEST_ANGLE) as *const _) as u32) });
-        }
-        // Target peripheral location
-        {
-            let spi = &self.mode_state.spi1;
-            // Safety: Erm... its not? XD We're asking the DMA to stream data to an arbitrary
-            // address, which is in no way shape or form safe. We've set it up so that it's a `u16`
-            // transfer from the static above to `SPI[DR]`. YOLO
-            dma.cpar1
-                .write(|w| unsafe { w.pa().bits(((&spi.dr) as *const _) as u32) });
-        }
-
-        // Now we wire up the DMA triggers to their respective streams
-        let dmamux = &self.mode_state.dmamux;
-        // Note: DMAMUX channels 0-7 connected to DMA1 channels 1-8, 8-15=DMA2 1-8
-        // TIM3 Update to the DMA stream 1 - TIM3_UP = 65
-        // Safety: Upstream: This should be an enum.
-        // TODO(blakely): Add enum values to `stm32-rs`
-        dmamux.c0cr.modify(|_, w| unsafe { w.dmareq_id().bits(65) });
-
-        // Enable the DMA stream.
-        dma.ccr1.modify(|_, w| w.en().set_bit());
-    }
-
     pub fn configure_peripherals(self) -> Controller<Ready> {
         self.configure_gpio();
         self.configure_timers();
-        self.configure_dma();
 
-        // SPI config
-        let spi1 = self.mode_state.spi1;
-        // Disable SPI, if enabled.
-        spi1.cr1.modify(|_, w| w.spe().clear_bit());
-        block_until! { spi1.cr1.read().spe().bit_is_clear() }
-        spi1.cr1.modify(|_, w| {
-            w.cpha()
-                .clear_bit()
-                .cpol()
-                .clear_bit()
-                .mstr()
-                .set_bit()
-                .br()
-                .div128()
-                .crcen()
-                .clear_bit()
-        });
-        // TODO(blakely): experiment with NSSP=1, since "In the case of a single data transfer, it
-        // forces the NSS pin high level after the transfer." - R0440,p1784
-        spi1.cr2.modify(|_, w| {
-            w.ssoe()
-                .enabled()
-                .frf()
-                .clear_bit()
-                .ds()
-                .sixteen_bit()
-                .nssp()
-                .set_bit()
-        });
+        let ma702 = ma702::new(self.mode_state.spi1)
+            .configure_spi()
+            .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)
@@ -346,14 +262,11 @@ impl Controller<Init> {
         // Rx IRQ
         enable_irq(device::Interrupt::FDCAN1_INTR1_IT);
 
-        // Enable the SPI port
-        spi1.cr1.modify(|_, w| w.spe().set_bit());
-
         // Kick off tim3.
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
         let new_self = Controller {
-            mode_state: Ready { spi1 },
+            mode_state: Ready { ma702 },
         };
         new_self
     }
