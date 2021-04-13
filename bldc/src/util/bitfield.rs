@@ -92,6 +92,14 @@ impl<U, T> WriteProxy<U, T> {
         self.bits = bits;
         self
     }
+
+    #[inline(always)]
+    pub fn new(bits: U) -> Self {
+        Self {
+            bits,
+            _marker: PhantomData,
+        }
+    }
 }
 
 pub mod macros {

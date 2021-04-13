@@ -135,6 +135,7 @@ impl Controller<Init> {
         // PA7 - SPI1 - ENC_MOSI - AF5
         // PA11 - FDCAN_RX, PUSHPULL, NOPULL, VERY_HIGH
         // PA12 - FDCAN_TX, PUSHPULL, NOPULL, VERY_HIGH
+        // PA15 - SPI3 - DRV_CS - AF6
         let gpioa = &self.mode_state.gpioa;
 
         // Pin modes
@@ -151,13 +152,17 @@ impl Controller<Init> {
                 .alternate()
                 .moder12()
                 .alternate()
+                .moder15()
+                .alternate()
         });
 
         // Alternate function settings
         gpioa
             .afrl
             .modify(|_, w| w.afrl4().af5().afrl5().af5().afrl6().af5().afrl7().af5());
-        gpioa.afrh.modify(|_, w| w.afrh11().af9().afrh12().af9());
+        gpioa
+            .afrh
+            .modify(|_, w| w.afrh11().af9().afrh12().af9().afrh15().af6());
 
         // Output types
         gpioa.otyper.modify(|_, w| {
@@ -172,6 +177,8 @@ impl Controller<Init> {
                 .ot11()
                 .push_pull()
                 .ot12()
+                .push_pull()
+                .ot15()
                 .push_pull()
         });
 
@@ -189,6 +196,8 @@ impl Controller<Init> {
                 .very_high_speed()
                 .ospeedr12()
                 .very_high_speed()
+                .ospeedr15()
+                .very_high_speed()
         });
 
         // Pullup/down/float
@@ -205,7 +214,17 @@ impl Controller<Init> {
                 .floating()
                 .pupdr12()
                 .floating()
+                .pupdr15()
+                .floating()
         });
+
+        // Configure GPIOC pins
+        // PC6 - DRV_ENABLE
+        let gpioc = &self.mode_state.gpioc;
+        gpioc.moder.modify(|_, w| w.moder6().output());
+        gpioc.otyper.modify(|_, w| w.ot6().push_pull());
+        gpioc.ospeedr.modify(|_, w| w.ospeedr6().very_high_speed());
+        gpioc.pupdr.modify(|_, w| w.pupdr6().floating());
     }
 
     fn configure_timers(&self) {
@@ -237,12 +256,10 @@ impl Controller<Init> {
             .configure_spi()
             .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
 
+        self.mode_state.gpioc.bsrr.write(|w| w.bs6().set_bit());
         let drv = drv8323rs::new(self.mode_state.spi3).configure_spi();
 
-        // ReadProxy = bitfield::ReadProxy<u32, FaultStatus1>
-        // FaultStatus1 = bitfield::Bitfield<u16, _FaultStatus1>
-        let foo = drv.fault_status_1().read();
-        let asdf = drv.fault_status_1().read().over_temp().bits();
+        let gdhs = drv.gate_drive_hs().read().bits();
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)

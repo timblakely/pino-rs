@@ -54,10 +54,44 @@ pub mod fs1 {
     #[allow(missing_docs)]
     #[doc(hidden)]
     pub struct _FaultStatus1;
+    impl super::Addr for FaultStatus1 {
+        fn addr() -> u8 {
+            0x0
+        }
+    }
 }
 
-impl Addr for fs1::FaultStatus1 {
-    fn addr() -> u8 {
-        0x0
+pub mod gdhs {
+    use crate::util::bitfield;
+    use crate::{readable_accessor, readwrite_field, writable_accessor};
+    pub type ReadProxy = bitfield::ReadProxy<u16, GateDriveHighSide>;
+    pub type WriteProxy = bitfield::WriteProxy<u16, GateDriveHighSide>;
+
+    readwrite_field!(LOCK, u8, 0b111, 8);
+    readwrite_field!(IDRIVEP_HS, u8, 0b1111, 4);
+    readwrite_field!(IDRIVEN_HS, u8, 0b1111, 0);
+
+    impl ReadProxy {
+        readable_accessor!(lock, LOCK, u8, 0b111, 8);
+        readable_accessor!(idrive_p, IDRIVEP_HS, u8, 0b1111, 4);
+        readable_accessor!(idrive_n, IDRIVEN_HS, u8, 0b1111, 0);
+    }
+
+    impl WriteProxy {
+        writable_accessor!(lock, LOCK);
+        writable_accessor!(idrive_p, IDRIVEP_HS);
+        writable_accessor!(idrive_n, IDRIVEN_HS);
+    }
+
+    pub type GateDriveHighSide = bitfield::Bitfield<u16, _GateDriveHighSide>;
+    impl bitfield::Readable for GateDriveHighSide {}
+    impl bitfield::Writeable for GateDriveHighSide {}
+    #[allow(missing_docs)]
+    #[doc(hidden)]
+    pub struct _GateDriveHighSide;
+    impl super::Addr for GateDriveHighSide {
+        fn addr() -> u8 {
+            0x03
+        }
     }
 }
