@@ -136,7 +136,13 @@ impl Controller<Init> {
         // PA11 - FDCAN_RX, PUSHPULL, NOPULL, VERY_HIGH
         // PA12 - FDCAN_TX, PUSHPULL, NOPULL, VERY_HIGH
         // PA15 - SPI3 - DRV_CS - AF6
+        // PB5 - SPI3 - DRV_MOSI - AF6
+        // PC6 - DRV_ENABLE
+        // PC10 - SPI3 - DRV_SCK - AF6
+        // PC11 - SPI3 - DRV_MISO - AF6
         let gpioa = &self.mode_state.gpioa;
+        let gpiob = &self.mode_state.gpiob;
+        let gpioc = &self.mode_state.gpioc;
 
         // Pin modes
         gpioa.moder.modify(|_, w| {
@@ -155,6 +161,15 @@ impl Controller<Init> {
                 .moder15()
                 .alternate()
         });
+        gpiob.moder.modify(|_, w| w.moder5().alternate());
+        gpioc.moder.modify(|_, w| {
+            w.moder6()
+                .output()
+                .moder10()
+                .alternate()
+                .moder11()
+                .alternate()
+        });
 
         // Alternate function settings
         gpioa
@@ -163,6 +178,8 @@ impl Controller<Init> {
         gpioa
             .afrh
             .modify(|_, w| w.afrh11().af9().afrh12().af9().afrh15().af6());
+        gpiob.afrl.modify(|_, w| w.afrl5().af6());
+        gpioc.afrh.modify(|_, w| w.afrh10().af6().afrh11().af6());
 
         // Output types
         gpioa.otyper.modify(|_, w| {
@@ -181,6 +198,10 @@ impl Controller<Init> {
                 .ot15()
                 .push_pull()
         });
+        gpiob.otyper.modify(|_, w| w.ot5().push_pull());
+        gpioc
+            .otyper
+            .modify(|_, w| w.ot6().push_pull().ot10().push_pull().ot11().push_pull());
 
         // Speed
         gpioa.ospeedr.modify(|_, w| {
@@ -199,6 +220,15 @@ impl Controller<Init> {
                 .ospeedr15()
                 .very_high_speed()
         });
+        gpiob.ospeedr.modify(|_, w| w.ospeedr5().very_high_speed());
+        gpioc.ospeedr.modify(|_, w| {
+            w.ospeedr6()
+                .very_high_speed()
+                .ospeedr10()
+                .very_high_speed()
+                .ospeedr11()
+                .very_high_speed()
+        });
 
         // Pullup/down/float
         gpioa.pupdr.modify(|_, w| {
@@ -215,16 +245,17 @@ impl Controller<Init> {
                 .pupdr12()
                 .floating()
                 .pupdr15()
+                .pull_up()
+        });
+        gpiob.pupdr.modify(|_, w| w.pupdr5().floating());
+        gpioc.pupdr.modify(|_, w| {
+            w.pupdr6()
+                .floating()
+                .pupdr10()
+                .floating()
+                .pupdr11()
                 .floating()
         });
-
-        // Configure GPIOC pins
-        // PC6 - DRV_ENABLE
-        let gpioc = &self.mode_state.gpioc;
-        gpioc.moder.modify(|_, w| w.moder6().output());
-        gpioc.otyper.modify(|_, w| w.ot6().push_pull());
-        gpioc.ospeedr.modify(|_, w| w.ospeedr6().very_high_speed());
-        gpioc.pupdr.modify(|_, w| w.pupdr6().floating());
     }
 
     fn configure_timers(&self) {
@@ -257,7 +288,17 @@ impl Controller<Init> {
             .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
 
         self.mode_state.gpioc.bsrr.write(|w| w.bs6().set_bit());
-        let drv = drv8323rs::new(self.mode_state.spi3).configure_spi();
+
+        let gpioa_bsrr = &self.mode_state.gpioa.bsrr;
+
+        let drv = drv8323rs::new(self.mode_state.spi3).configure_spi(
+            || {
+                gpioa_bsrr.write(|w| w.br15().set_bit());
+            },
+            || {
+                gpioa_bsrr.write(|w| w.bs15().set_bit());
+            },
+        );
 
         let gdhs = drv.gate_drive_hs().read().bits();
 

@@ -11,7 +11,7 @@ use panic_halt as _;
 #[cfg(feature = "panic-itm")]
 use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 
-// TODO(blakely): Comment on all the stuff happens before we actually get
+// TODO(blakely): Comment on all the stuff that happens before we actually get
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {

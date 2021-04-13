@@ -16,29 +16,47 @@ pub struct Drv8323rs<S> {
 }
 
 pub struct Init {}
-pub struct Idle {}
+pub struct Idle<EnSpi, DisSpi>
+where
+    EnSpi: Fn(),
+    DisSpi: Fn(),
+{
+    enablEnSpi: EnSpi,
+    disablEnSpi: DisSpi,
+}
 
-pub fn new(spi: device::SPI3) -> Drv8323rs<Init> {
+pub fn new<'a>(spi: device::SPI3) -> Drv8323rs<Init> {
     Drv8323rs {
         spi,
         mode_state: Init {},
     }
 }
 
-pub struct DrvRegister<'a, T: Addr> {
+pub struct DrvRegister<'a, T: Addr, EnSpi: Fn(), DisSpi: Fn()> {
     spi: &'a device::SPI3,
+    cs_low: &'a EnSpi,
+    cs_high: &'a DisSpi,
     _marker: PhantomData<T>,
 }
 
-impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
+impl<'a, T: 'a + Addr, EnSpi: Fn(), DisSpi: Fn()> DrvRegister<'a, T, EnSpi, DisSpi> {
     pub fn read(&self) -> bitfield::ReadProxy<u16, T> {
         let spi = self.spi;
         let addr = T::addr();
+        // (self.cs_low)();
+        // Enable SPI
+        spi.cr1.modify(|_, w| w.spe().set_bit());
+        block_until! { spi.cr1.read().spe().bit_is_set() }
         spi.dr
-            .write(|w| w.dr().bits((1 << 15) & (addr as u16) << 11));
-        block_until! { spi.sr.read().bsy().bit_is_set() }
+            .write(|w| w.dr().bits((1u16 << 15) | (addr as u16) << 11));
         block_while! { spi.sr.read().bsy().bit_is_set() }
+        // Disable SPI
+        spi.cr1.modify(|_, w| w.spe().clear_bit());
+        block_until! { spi.cr1.read().spe().bit_is_clear() }
+        // (self.cs_high)();
         let bits = spi.dr.read().bits() as u16;
+        let bits2 = spi.dr.read().bits() as u16;
+        let bits3 = spi.dr.read().bits() as u16;
 
         bitfield::ReadProxy::<u16, T>::new(bits)
     }
@@ -58,17 +76,22 @@ impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
         .bits;
         let spi = self.spi;
         let addr = T::addr();
+        (self.cs_low)();
         spi.dr.write(|w| w.dr().bits(((addr as u16) << 11) | value));
-        block_until! { spi.sr.read().bsy().bit_is_set() }
         block_while! { spi.sr.read().bsy().bit_is_set() }
         // Each transaction requires a read/write to the SPI, so clear out the value from the `DR`
         // register.
+        (self.cs_high)();
         let _ = spi.dr.read().bits();
     }
 }
 
 impl Drv8323rs<Init> {
-    pub fn configure_spi(self) -> Drv8323rs<Idle> {
+    pub fn configure_spi<EnSpi: Fn(), DisSpi: Fn()>(
+        self,
+        enablEnSpi: EnSpi,
+        disablEnSpi: DisSpi,
+    ) -> Drv8323rs<Idle<EnSpi, DisSpi>> {
         // SPI config
         let spi = self.spi;
 
@@ -103,28 +126,39 @@ impl Drv8323rs<Init> {
                 .set_bit()
         });
 
-        // Enable SPI
-        spi.cr1.modify(|_, w| w.spe().set_bit());
-        block_until! { spi.cr1.read().spe().bit_is_set() }
-
         Drv8323rs {
             spi,
-            mode_state: Idle {},
+            mode_state: Idle {
+                enablEnSpi,
+                disablEnSpi,
+            },
         }
     }
 }
 
-impl Drv8323rs<Idle> {
-    pub fn fault_status_1<'a>(&'a self) -> DrvRegister<'a, registers::fs1::FaultStatus1> {
+impl<'a, EnSpi: Fn(), DisSpi: Fn()> Drv8323rs<Idle<EnSpi, DisSpi>> {
+    fn drv_register<RegType: Addr>(&'a self) -> DrvRegister<'a, RegType, EnSpi, DisSpi> {
         DrvRegister {
             spi: &self.spi,
+            cs_low: &self.mode_state.enablEnSpi,
+            cs_high: &self.mode_state.disablEnSpi,
             _marker: PhantomData,
         }
     }
 
-    pub fn gate_drive_hs<'a>(&'a self) -> DrvRegister<'a, registers::gdhs::GateDriveHighSide> {
+    pub fn fault_status_1(
+        &'a self,
+    ) -> DrvRegister<'a, registers::fs1::FaultStatus1, EnSpi, DisSpi> {
+        self.drv_register()
+    }
+
+    pub fn gate_drive_hs(
+        &'a self,
+    ) -> DrvRegister<'a, registers::gdhs::GateDriveHighSide, EnSpi, DisSpi> {
         DrvRegister {
             spi: &self.spi,
+            cs_low: &self.mode_state.enablEnSpi,
+            cs_high: &self.mode_state.disablEnSpi,
             _marker: PhantomData,
         }
     }
