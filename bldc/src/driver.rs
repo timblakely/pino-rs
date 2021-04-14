@@ -1,6 +1,6 @@
 use crate::{
     block_while,
-    ic::drv8323rs::{self, Drv8323rs},
+    ic::drv8323rs,
     ic::ma702::{self, Ma702, Streaming},
 };
 use cortex_m::peripheral as cm;
@@ -269,7 +269,7 @@ impl Controller<Init> {
         // Fire off a DMA on update (i.e. counter overflow)
         tim3.dier.modify(|_, w| w.ude().set_bit());
         // Assuming 170MHz core clock, set prescalar to 3 and ARR to 42500 for 170e6/42500/4=1kHz.
-        // Why 3 and not 4? The timer cock is set to `core_clk / (PSC[PSC] + 1)`. If it were to use
+        // Why 3 and not 4? The timer clock is set to `core_clk / (PSC[PSC] + 1)`. If it were to use
         // the value directly it'd divide the clock by zero on reset, which would be A Bad Thing.
         // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 3 is well
         // within range.
@@ -291,16 +291,14 @@ impl Controller<Init> {
 
         let gpioa_bsrr = &self.mode_state.gpioa.bsrr;
 
-        let drv = drv8323rs::new(self.mode_state.spi3).configure_spi(
-            || {
-                gpioa_bsrr.write(|w| w.br15().set_bit());
-            },
-            || {
-                gpioa_bsrr.write(|w| w.bs15().set_bit());
-            },
-        );
+        let _drv = drv8323rs::new(
+            self.mode_state.spi3,
+            || gpioa_bsrr.write(|w| w.bs15().set_bit()),
+            || gpioa_bsrr.write(|w| w.br15().set_bit()),
+        )
+        .enable();
 
-        let gdhs = drv.gate_drive_hs().read().bits();
+        // let gdhs = drv.gate_drive_hs().read().bits();
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)
