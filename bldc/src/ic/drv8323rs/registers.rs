@@ -216,8 +216,8 @@ pub mod gdls {
     use super::DriveCurrent;
     use crate::util::bitfield;
     use crate::{readable_accessor, readwrite_field, writable_accessor};
-    pub type ReadProxy = bitfield::ReadProxy<u16, GateDriveHighSide>;
-    pub type WriteProxy = bitfield::WriteProxy<u16, GateDriveHighSide>;
+    pub type ReadProxy = bitfield::ReadProxy<u16, GateDriveLowSide>;
+    pub type WriteProxy = bitfield::WriteProxy<u16, GateDriveLowSide>;
 
     readwrite_field!(CBC, u8, 0b1, 10);
     readwrite_field!(TDRIVE, u8, 0b11, 8);
@@ -238,13 +238,13 @@ pub mod gdls {
         writable_accessor!(idrive_n_low_side, IDRIVEN_LS);
     }
 
-    pub type GateDriveHighSide = bitfield::Bitfield<u16, _GateDriveHighSide>;
-    impl bitfield::Readable for GateDriveHighSide {}
-    impl bitfield::Writeable for GateDriveHighSide {}
+    pub type GateDriveLowSide = bitfield::Bitfield<u16, _GateDriveLowSide>;
+    impl bitfield::Readable for GateDriveLowSide {}
+    impl bitfield::Writeable for GateDriveLowSide {}
     #[allow(missing_docs)]
     #[doc(hidden)]
-    pub struct _GateDriveHighSide;
-    impl super::Addr for GateDriveHighSide {
+    pub struct _GateDriveLowSide;
+    impl super::Addr for GateDriveLowSide {
         fn addr() -> u8 {
             0x04
         }
@@ -460,17 +460,17 @@ pub enum SenseOcp {
     V1 = 0b11,
 }
 
+writable_variant_from!(CsaDivisor, u8);
+writable_variant_from!(CsaGain, u8);
+writable_variant_from!(CsaLowSideRef, u8);
+writable_variant_from!(CsaPositiveInput, u8);
 writable_variant_from!(DeadTime, u8);
 writable_variant_from!(DriveCurrent, u8);
 writable_variant_from!(OcpDeglitch, u8);
 writable_variant_from!(OcpMode, u8);
+writable_variant_from!(OffsetCalibration, u8);
 writable_variant_from!(PwmMode, u8);
 writable_variant_from!(RetryTime, u8);
-writable_variant_from!(VdsLevel, u8);
 writable_variant_from!(SenseOcp, u8);
-writable_variant_from!(OffsetCalibration, u8);
 writable_variant_from!(SenseOvercurrent, u8);
-writable_variant_from!(CsaGain, u8);
-writable_variant_from!(CsaLowSideRef, u8);
-writable_variant_from!(CsaPositiveInput, u8);
-writable_variant_from!(CsaDivisor, u8);
+writable_variant_from!(VdsLevel, u8);

@@ -291,12 +291,31 @@ impl Controller<Init> {
 
         let gpioa_bsrr = &self.mode_state.gpioa.bsrr;
 
-        let _drv = drv8323rs::new(
+        let drv = drv8323rs::new(
             self.mode_state.spi3,
             || gpioa_bsrr.write(|w| w.bs15().set_bit()),
             || gpioa_bsrr.write(|w| w.br15().set_bit()),
         )
         .enable();
+
+        // Configure DRV8323RS.
+        {
+            use drv8323rs::registers::*;
+            drv.control_register().update(|_, w| {
+                w.pwm_mode()
+                    .variant(PwmMode::Pwm3x)
+                    .clear_latched_faults()
+                    .set_bit()
+            });
+            drv.current_sense().update(|_, w| {
+                w.vref_divisor()
+                    .variant(CsaDivisor::Two)
+                    .current_sense_gain()
+                    .variant(CsaGain::V40)
+                    .sense_level()
+                    .variant(SenseOcp::V1)
+            })
+        }
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)

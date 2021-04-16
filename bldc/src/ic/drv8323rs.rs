@@ -34,12 +34,12 @@ impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
         bitfield::ReadProxy::<u16, T>::new(bits)
     }
 
-    pub fn update<F>(&self, f: F)
+    pub fn update<F>(&'a self, f: F)
     where
-        F: FnOnce(
+        for<'w> F: FnOnce(
             &bitfield::ReadProxy<u16, T>,
-            &mut bitfield::WriteProxy<u16, T>,
-        ) -> &'a mut bitfield::WriteProxy<u16, T>,
+            &'w mut bitfield::WriteProxy<u16, T>,
+        ) -> &'w mut bitfield::WriteProxy<u16, T>,
     {
         let bits = self.read().bits;
         let value = f(
@@ -47,10 +47,21 @@ impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
             &mut bitfield::WriteProxy::new(bits),
         )
         .bits;
+        // TODO(blakely): Refactor this into a `write` function
         let spi = self.spi;
         let addr = T::addr();
+
+        // Enable SPI
+        spi.cr1.modify(|_, w| w.spe().set_bit());
+        block_until! { spi.cr1.read().spe().bit_is_set() }
+
         spi.dr.write(|w| w.dr().bits(((addr as u16) << 11) | value));
         block_while! { spi.sr.read().bsy().bit_is_set() }
+
+        // Disable SPI
+        spi.cr1.modify(|_, w| w.spe().clear_bit());
+        block_until! { spi.cr1.read().spe().bit_is_clear() }
+
         // Each transaction requires a read/write to the SPI, so clear out the value from the `DR`
         // register.
         let _ = spi.dr.read().bits();
@@ -145,7 +156,29 @@ impl<'a, E: Fn(), D: Fn()> Drv8323rs<Enabled, E, D> {
         self.drv_register()
     }
 
+    pub fn fault_status_2(&'a self) -> DrvRegister<'a, registers::fs2::FaultStatus2> {
+        self.drv_register()
+    }
+
+    pub fn control_register(&'a self) -> DrvRegister<'a, registers::cr::ControlRegister> {
+        self.drv_register()
+    }
+
     pub fn gate_drive_hs(&'a self) -> DrvRegister<'a, registers::gdhs::GateDriveHighSide> {
+        self.drv_register()
+    }
+
+    pub fn gate_drive_ls(&'a self) -> DrvRegister<'a, registers::gdls::GateDriveLowSide> {
+        self.drv_register()
+    }
+
+    pub fn over_current_protection(
+        &'a self,
+    ) -> DrvRegister<'a, registers::ocp::OverCurrentProtection> {
+        self.drv_register()
+    }
+
+    pub fn current_sense(&'a self) -> DrvRegister<'a, registers::csa::CurrentSenseAmplifier> {
         self.drv_register()
     }
 
