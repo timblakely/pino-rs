@@ -1,3 +1,5 @@
+use crate::writable_variant_from;
+
 mod f0 {
     use super::ExtendedFilterMode;
     use crate::util::bitfield;
@@ -76,3 +78,6 @@ pub struct ExtendedFilter {
     pub f0: f0::F0,
     pub f1: f1::F1,
 }
+
+writable_variant_from!(ExtendedFilterMode, u8);
+writable_variant_from!(ExtendedFilterType, u8);

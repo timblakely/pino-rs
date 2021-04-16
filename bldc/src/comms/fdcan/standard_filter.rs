@@ -1,4 +1,4 @@
-use crate::{readable_accessor, readwrite_field, writable_accessor};
+use crate::{readable_accessor, readwrite_field, writable_accessor, writable_variant_from};
 
 use crate::util::bitfield;
 
@@ -46,3 +46,6 @@ impl bitfield::Writeable for StandardFilter {}
 #[allow(missing_docs)]
 #[doc(hidden)]
 pub struct _StandardFilter;
+
+writable_variant_from!(Action, u8);
+writable_variant_from!(FilterType, u8);

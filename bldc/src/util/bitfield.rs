@@ -229,7 +229,6 @@ pub mod macros {
         };
         ($n:ident, $size:ty, $mask:expr, $offset:expr, $variant:ident) => {
             crate::writable_bits!($n, $size, $mask, $offset);
-            crate::writable_variant_from!($variant, $size);
             crate::writable_variant!($n, $mask, $offset, $variant);
         };
     }

@@ -298,8 +298,6 @@ impl Controller<Init> {
         )
         .enable();
 
-        // let gdhs = drv.gate_drive_hs().read().bits();
-
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)
             .enter_init()
