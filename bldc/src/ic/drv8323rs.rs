@@ -83,11 +83,11 @@ pub struct Enabled {
     spi: device::SPI3,
 }
 
-pub fn new<'a, E: Fn(), D: Fn()>(
+pub fn new<'a>(
     spi: device::SPI3,
-    enable: E,
-    disable: D,
-) -> Drv8323rs<Sleep, E, D> {
+    enable: impl Fn(),
+    disable: impl Fn(),
+) -> Drv8323rs<Sleep, impl Fn(), impl Fn()> {
     // Disable SPI, if enabled.
     spi.cr1.modify(|_, w| w.spe().clear_bit());
     block_until! { spi.cr1.read().spe().bit_is_clear() }
