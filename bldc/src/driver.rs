@@ -1,20 +1,19 @@
+use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
+use crate::{
+    block_until,
+    comms::fdcan::{self, Sram, FDCANSHARE},
+};
 use crate::{
     block_while,
     ic::drv8323rs,
     ic::ma702::{self, Ma702, Streaming},
 };
 use cortex_m::peripheral as cm;
+use drv8323rs::{Drv8323rs, Enabled};
 use stm32g4::stm32g474 as device;
-
-use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
-use crate::{
-    block_until,
-    comms::fdcan::{self, Sram, FDCANSHARE},
-};
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
 pub struct Controller<S> {
-    #[allow(dead_code)]
     pub mode_state: S,
 }
 
@@ -32,6 +31,8 @@ pub struct Init {
 
 pub struct Ready {
     pub ma702: Ma702<Streaming>,
+    pub drv: Drv8323rs<Enabled>,
+    pub gpioa: device::GPIOA,
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -123,27 +124,6 @@ fn init(
             dmamux,
         },
     }
-}
-
-pub fn configure_drv<'a>(
-    drv: &drv8323rs::Drv8323rs<drv8323rs::Enabled, impl Fn() + 'a, impl Fn() + 'a>,
-) {
-    // Configure DRV8323RS.
-    use drv8323rs::registers::*;
-    drv.control_register().update(|_, w| {
-        w.pwm_mode()
-            .variant(PwmMode::Pwm3x)
-            .clear_latched_faults()
-            .set_bit()
-    });
-    drv.current_sense().update(|_, w| {
-        w.vref_divisor()
-            .variant(CsaDivisor::Two)
-            .current_sense_gain()
-            .variant(CsaGain::V40)
-            .sense_level()
-            .variant(SenseOcp::V1)
-    });
 }
 
 impl Controller<Init> {
@@ -300,7 +280,7 @@ impl Controller<Init> {
         tim3.arr.write(|w| unsafe { w.arr().bits(42500) });
     }
 
-    pub fn configure_peripherals(self) -> Controller<Ready> {
+    pub fn configure_peripherals<'a>(self) -> Controller<Ready> {
         self.configure_gpio();
         self.configure_timers();
 
@@ -310,14 +290,26 @@ impl Controller<Init> {
 
         self.mode_state.gpioc.bsrr.write(|w| w.bs6().set_bit());
 
-        let gpioa_bsrr = &self.mode_state.gpioa.bsrr;
-        let drv = drv8323rs::new(
-            self.mode_state.spi3,
-            move || gpioa_bsrr.write(|w| w.bs15().set_bit()),
-            move || gpioa_bsrr.write(|w| w.br15().set_bit()),
-        )
-        .enable();
-        configure_drv(&drv);
+        let gpioa = &self.mode_state.gpioa;
+        let drv = drv8323rs::new(self.mode_state.spi3)
+            .enable(|| gpioa.bsrr.write(|w| w.bs15().set_bit()));
+
+        // Configure DRV8323RS.
+        use drv8323rs::registers::*;
+        drv.control_register().update(|_, w| {
+            w.pwm_mode()
+                .variant(PwmMode::Pwm3x)
+                .clear_latched_faults()
+                .set_bit()
+        });
+        drv.current_sense().update(|_, w| {
+            w.vref_divisor()
+                .variant(CsaDivisor::Two)
+                .current_sense_gain()
+                .variant(CsaGain::V40)
+                .sense_level()
+                .variant(SenseOcp::V1)
+        });
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)
@@ -349,7 +341,11 @@ impl Controller<Init> {
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
         let new_self = Controller {
-            mode_state: Ready { ma702 },
+            mode_state: Ready {
+                ma702,
+                drv,
+                gpioa: self.mode_state.gpioa,
+            },
         };
         new_self
     }

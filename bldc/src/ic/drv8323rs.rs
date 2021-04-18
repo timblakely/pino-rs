@@ -68,26 +68,16 @@ impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
     }
 }
 
-pub struct Drv8323rs<S, E: Fn(), D: Fn()> {
-    enable: E,
-    disable: D,
-
+pub struct Drv8323rs<S> {
+    spi: device::SPI3,
     #[allow(dead_code)]
     mode_state: S,
 }
 
-pub struct Sleep {
-    spi: device::SPI3,
-}
-pub struct Enabled {
-    spi: device::SPI3,
-}
+pub struct Sleep {}
+pub struct Enabled {}
 
-pub fn new<'a>(
-    spi: device::SPI3,
-    enable: impl Fn(),
-    disable: impl Fn(),
-) -> Drv8323rs<Sleep, impl Fn(), impl Fn()> {
+pub fn new<'a>(spi: device::SPI3) -> Drv8323rs<Sleep> {
     // Disable SPI, if enabled.
     spi.cr1.modify(|_, w| w.spe().clear_bit());
     block_until! { spi.cr1.read().spe().bit_is_clear() }
@@ -120,21 +110,17 @@ pub fn new<'a>(
     });
 
     Drv8323rs {
-        enable,
-        disable,
-        mode_state: Sleep { spi },
+        spi,
+        mode_state: Sleep {},
     }
 }
 
-impl<E: Fn(), D: Fn()> Drv8323rs<Sleep, E, D> {
-    pub fn enable(self) -> Drv8323rs<Enabled, E, D> {
-        (self.enable)();
+impl Drv8323rs<Sleep> {
+    pub fn enable<T: FnOnce()>(self, enable: T) -> Drv8323rs<Enabled> {
+        (enable)();
         let new_drv = Drv8323rs {
-            enable: self.enable,
-            disable: self.disable,
-            mode_state: Enabled {
-                spi: self.mode_state.spi,
-            },
+            spi: self.spi,
+            mode_state: Enabled {},
         };
         // SPI port takes ~1ms to wake up. Poll until we get a reset value we expect.
         // TODO(blakely): I don't like blocking here, but don't want to sacrifice a timer or enable
@@ -144,10 +130,10 @@ impl<E: Fn(), D: Fn()> Drv8323rs<Sleep, E, D> {
     }
 }
 
-impl<'a, E: Fn(), D: Fn()> Drv8323rs<Enabled, E, D> {
+impl<'a> Drv8323rs<Enabled> {
     fn drv_register<RegType: Addr>(&'a self) -> DrvRegister<'a, RegType> {
         DrvRegister {
-            spi: &self.mode_state.spi,
+            spi: &self.spi,
             _marker: PhantomData,
         }
     }
@@ -182,14 +168,11 @@ impl<'a, E: Fn(), D: Fn()> Drv8323rs<Enabled, E, D> {
         self.drv_register()
     }
 
-    pub fn disable(self) -> Drv8323rs<Sleep, E, D> {
-        (self.disable)();
+    pub fn disable<T: FnOnce()>(self, disable: T) -> Drv8323rs<Sleep> {
+        (disable)();
         Drv8323rs {
-            enable: self.enable,
-            disable: self.disable,
-            mode_state: Sleep {
-                spi: self.mode_state.spi,
-            },
+            spi: self.spi,
+            mode_state: Sleep {},
         }
     }
 }
