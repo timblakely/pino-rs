@@ -68,14 +68,18 @@ impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
     }
 }
 
-pub struct Drv8323rs<S> {
+pub struct Drv8323rs<S: DrvState> {
     spi: device::SPI3,
     #[allow(dead_code)]
     mode_state: S,
 }
 
+pub trait DrvState {}
+
 pub struct Sleep {}
+impl DrvState for Sleep {}
 pub struct Enabled {}
+impl DrvState for Enabled {}
 
 pub fn new<'a>(spi: device::SPI3) -> Drv8323rs<Sleep> {
     // Disable SPI, if enabled.

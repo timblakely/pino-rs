@@ -19,7 +19,7 @@ fn main() -> ! {
 
     loop {
         // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing - the
-        // only other interrupt that shares this particular buffer - so ensure we aren't preempted
+        // only other interrupt that shares this particular buffer - ensuring we aren't preempted
         // when reading from it. This is fine in general since the peripheral itself has an internal
         // buffer, and as long as we can clear the backlog before the peripheral receives 4 requests
         // we shoudl be good.
