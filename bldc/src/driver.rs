@@ -145,6 +145,7 @@ impl Controller<Init> {
         // PA12 - FDCAN_TX, PUSHPULL, NOPULL, VERY_HIGH
         // PA15 - SPI3 - DRV_CS - AF6
         // PB5 - SPI3 - DRV_MOSI - AF6
+        // PB9 - LED 1
         // PC6 - DRV_ENABLE
         // PC10 - SPI3 - DRV_SCK - AF6
         // PC11 - SPI3 - DRV_MISO - AF6
@@ -175,7 +176,9 @@ impl Controller<Init> {
                 .moder15()
                 .alternate()
         });
-        gpiob.moder.modify(|_, w| w.moder5().alternate());
+        gpiob
+            .moder
+            .modify(|_, w| w.moder5().alternate().moder9().output());
         gpioc.moder.modify(|_, w| {
             w.moder6()
                 .output()
@@ -229,7 +232,9 @@ impl Controller<Init> {
                 .ot15()
                 .push_pull()
         });
-        gpiob.otyper.modify(|_, w| w.ot5().push_pull());
+        gpiob
+            .otyper
+            .modify(|_, w| w.ot5().push_pull().ot9().push_pull());
         gpioc
             .otyper
             .modify(|_, w| w.ot6().push_pull().ot10().push_pull().ot11().push_pull());
@@ -257,7 +262,9 @@ impl Controller<Init> {
                 .ospeedr15()
                 .very_high_speed()
         });
-        gpiob.ospeedr.modify(|_, w| w.ospeedr5().very_high_speed());
+        gpiob
+            .ospeedr
+            .modify(|_, w| w.ospeedr5().very_high_speed().ospeedr9().very_high_speed());
         gpioc.ospeedr.modify(|_, w| {
             w.ospeedr6()
                 .very_high_speed()
@@ -290,7 +297,9 @@ impl Controller<Init> {
                 .pupdr15()
                 .pull_up()
         });
-        gpiob.pupdr.modify(|_, w| w.pupdr5().floating());
+        gpiob
+            .pupdr
+            .modify(|_, w| w.pupdr5().floating().pupdr9().floating());
         gpioc.pupdr.modify(|_, w| {
             w.pupdr6()
                 .floating()
@@ -421,6 +430,8 @@ impl Controller<Init> {
                 .ccr5()
                 .bits(2083)
         });
+        // Enable interrupt for update
+        tim1.dier.modify(|_, w| w.uie().set_bit());
     }
 
     pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
@@ -481,6 +492,8 @@ impl Controller<Init> {
         enable_irq(device::Interrupt::FDCAN1_INTR0_IT);
         // Rx IRQ
         enable_irq(device::Interrupt::FDCAN1_INTR1_IT);
+        // TIM1 Update
+        enable_irq(device::Interrupt::TIM1_UP_TIM16);
 
         // Kick off tim1.
         self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());

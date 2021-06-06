@@ -69,7 +69,7 @@
             "name": "RELEASE (OpenOCD)",
             "servertype": "openocd",
             "cwd": "${workspaceRoot}",
-            "preLaunchTask": "Cargo Build (release)",
+            "preLaunchTask": "Build release",
             "runToMain": true,
             "executable": "./target/thumbv7em-none-eabihf/release/bldc",
             "device": "STM32G474RE",

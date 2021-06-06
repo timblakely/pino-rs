@@ -42,17 +42,43 @@
             }
         },
         {
-            "label": "Cargo Build (release)",
+            "label": "Cargo Build Release",
             "type": "process",
             "command": "cargo",
             "args": [
                 "build",
-                "--release"
+                "--release",
             ],
             "problemMatcher": [
                 "$rustc"
             ],
             "group": "build"
+        },
+        {
+            "label": "Cargo Size Release",
+            "type": "process",
+            "command": "cargo",
+            "args": [
+                "size",
+                "--release",
+                "-q"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+        },
+        {
+            "label": "Build release",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Cargo Build Release",
+                "Cargo Size Release",
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         },
         {
             "label": "Cargo Build Examples (debug)",

@@ -52,3 +52,32 @@ fn FDCAN1_INTR1_IT() {
     bldc::comms::fdcan::fdcan1_rx_isr();
     clear_pending_irq(device::Interrupt::FDCAN1_INTR1_IT);
 }
+
+#[interrupt]
+fn TIM1_UP_TIM16() {
+    unsafe {
+        // let p = device::Peripherals::steal();
+        // p.GPIOB.bsrr.write(|w| w.bs9().set_bit());
+        *(0x48000418 as *mut u32) = 1 << 9;
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        *(0x48000418 as *mut u32) = 1 << (9 + 16);
+        // p.GPIOB.bsrr.write(|w| w.br9().set_bit());
+    }
+
+    // HACK HACK HACK
+    // TODO(blakely): This is a terribly lazy way to clear to UIF flag in TIM1[SR]. Do better.
+    unsafe {
+        let p = device::Peripherals::steal();
+        p.TIM1.sr.modify(|_, w| w.uif().clear_bit());
+    }
+    clear_pending_irq(device::Interrupt::TIM1_UP_TIM16);
+}
