@@ -133,4 +133,4 @@ e^{x_1t}\\
   - Multiplying $z(t)$ by $T$ converts it back from eigen space to physical space
 ![](images/2021-06-13-23-36-32.png)
 
-**TL;DR:** We can calculate in eigen space which is much simpler, and can move back into physical space
+## **TL;DR:** We can calculate in eigen space which is much simpler, and can move back into physical space
