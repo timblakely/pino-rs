@@ -37,7 +37,7 @@ Refresher: $[T,D]=eig(A)$
     eigenvectors towards the negative to induce stability
 
 ## Discrete time
-- In continuous time, %\dot{x}% is _continuously varying_ $x(t)$, but physical systems use discrete
+- In continuous time, $\dot{x}$ is _continuously varying_ $x(t)$, but physical systems use discrete
   time $\Delta t$
 - "Dynamical system" $x_{k+1}=\tilde{A}x_k$
   - Each step can be calculated by the previous step by applying $\tilde{A}$
