@@ -19,7 +19,7 @@ This has implications with the solution to $\dot{x}=Ax$: $e^{At}$
 - $e^{At}$ can be written as $e^{At}=I+At+\frac{A^2t^2}{2}+\frac{A^3t^3}{3}+\dots$
   - This is an **infinite sum**; requires total summation over infinite terms for actual solution
   - However, applying Cayley-Hamilton means that we can represent $e^{At}$ as **finite sum** over $n$ terms
-  - $e^{At}=\alpha_0(t)I + \alpha_1(t)A + \alpha_2(t)A^2 + \alpha_3(t)A^3+...+ \alpha_{n-1}(t)A^{n-1}A^2$. Period. _Not_ infinite.
+  - $e^{At}=\alpha_0(t)I + \alpha_1(t)A + \alpha_2(t)A^2 + \alpha_3(t)A^3+...+ \alpha_{n-1}(t)A^{n-1}$. Period. _Not_ infinite.
   - This _does_ require time-varying coefficients for the matricies, but that's (apparently?) simpler to handle
 - Applying this will allow us to show that controllability $\iff$ reachability
   - Sneak peek: notice how $Ç=\begin{bmatrix}BABA^2BA^3B...A^{n-1}B\end{bmatrix}$ is finite, and up to $A^{n-1}$ as well
