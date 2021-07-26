@@ -1,6 +1,8 @@
+cargo-features = ["edition2021"]
+
 [package]
 authors = ["Tim Blakely <tim.blakely@gmail.com>"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 name = "bldc"
 version = "0.1.0"

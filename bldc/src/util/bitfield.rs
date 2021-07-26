@@ -106,7 +106,6 @@ pub mod macros {
     #[macro_export]
     macro_rules! readable_accessor {
         ($fn:ident, $n:ident, $size:ty, $mask:expr, $offset:expr) => {
-            #[inline(always)]
             paste::paste! {
                 pub fn $fn(&self) -> [<$n _R>] {
                     [<$n _R>]::new((((self.bits >> $offset) & $mask) as $size).into())
@@ -119,7 +118,6 @@ pub mod macros {
     macro_rules! writable_accessor {
         ($fn:ident, $n:ident) => {
             paste::paste! {
-                #[inline(always)]
                 pub fn $fn(&mut self) -> [<$n _W>]  {
                     [<$n _W>] { w: self }
                 }
@@ -146,7 +144,6 @@ pub mod macros {
                     w: &'a mut WriteProxy,
                 }
                 impl<'a> [<$n _W>]<'a> {
-                    #[inline(always)]
                     pub unsafe fn bits(self, value: $size) -> &'a mut WriteProxy {
                         self.w.bits = ((self.w.bits as u32 & !($mask << $offset)) | (((value as u32) & $mask) << $offset)) as _;
                         self.w
@@ -161,11 +158,9 @@ pub mod macros {
         ($n:ident) => {
             paste::paste! {
                 impl<'a> [<$n _W>]<'a> {
-                    #[inline(always)]
                     pub fn set_bit(self) -> &'a mut WriteProxy {
                         unsafe { self.bits(1) }
                     }
-                    #[inline(always)]
                     pub fn clear_bit(self) -> &'a mut WriteProxy {
                         unsafe { self.bits(0) }
                     }
@@ -179,7 +174,6 @@ pub mod macros {
         ($n:ident, $size:ty, $mask:expr, $offset:expr) => {
             paste::paste! {
                 impl<'a> [<$n _W>]<'a> {
-                    #[inline(always)]
                     pub fn set(self, value: $size) -> &'a mut WriteProxy {
                         unsafe { self.bits(value) }
                     }

@@ -1,15 +1,15 @@
+cargo-features = ["edition2021"]
+
 [package]
 name = "third_party"
 version = "0.1.0"
 authors = ["Tim Blakely <tim.blakely@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 
 [dependencies]
 cortex-m = "0.7.2"
 
-[[bin]]
-name = "m4vga"
-path = "src/lib.rs"
+[lib]
 test = false
 bench = false
