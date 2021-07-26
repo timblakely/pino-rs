@@ -7,3 +7,9 @@ edition = "2018"
 
 [dependencies]
 cortex-m = "0.7.2"
+
+[[bin]]
+name = "m4vga"
+path = "src/lib.rs"
+test = false
+bench = false
