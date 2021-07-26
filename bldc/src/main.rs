@@ -22,7 +22,7 @@ fn main() -> ! {
         // only other interrupt that shares this particular buffer - ensuring we aren't preempted
         // when reading from it. This is fine in general since the peripheral itself has an internal
         // buffer, and as long as we can clear the backlog before the peripheral receives 4 requests
-        // we shoudl be good.
+        // we should be good.
         // Alternatively, we could just process a single message here to make sure that we only hold
         // this lock for the absolute minimum time.
         bldc::util::interrupts::free_from(
