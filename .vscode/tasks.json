@@ -23,17 +23,16 @@
                 "size",
                 "-q"
             ],
-            // "options": {"env": {"RUSTFLAGS": "-Awarnings"}},
             "problemMatcher": [
                 "$rustc"
-            ],
+            ]
         },
         {
             "label": "Build debug",
             "dependsOrder": "sequence",
             "dependsOn": [
                 "Cargo Build Debug",
-                "Cargo Size Debug",
+                "Cargo Size Debug"
             ],
             "problemMatcher": [],
             "group": {
@@ -47,7 +46,7 @@
             "command": "cargo",
             "args": [
                 "build",
-                "--release",
+                "--release"
             ],
             "problemMatcher": [
                 "$rustc"
@@ -65,20 +64,17 @@
             ],
             "problemMatcher": [
                 "$rustc"
-            ],
+            ]
         },
         {
             "label": "Build release",
             "dependsOrder": "sequence",
             "dependsOn": [
                 "Cargo Build Release",
-                "Cargo Size Release",
+                "Cargo Size Release"
             ],
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
+            "group": "build"
         },
         {
             "label": "Cargo Build Examples (debug)",
