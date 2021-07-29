@@ -126,7 +126,7 @@ impl Drv8323rs<Sleep> {
             spi: self.spi,
             mode_state: Enabled {},
         };
-        // SPI port takes ~1ms to wake up. Poll until we get a reset value we expect.
+        // DRV8323's SPI port takes ~1ms to wake up. Poll until we get a reset value we expect.
         // TODO(blakely): I don't like blocking here, but don't want to sacrifice a timer or enable
         // SysTick. Figure out something better.
         block_until! { new_drv.gate_drive_hs().read().bits == 1023 }
