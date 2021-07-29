@@ -1,7 +1,9 @@
 # Pino controller
 
 Bare-metal BLDC controller for Pino the robot, written in
-[Rust](https://www.rust-lang.org)!  
+[Rust](https://www.rust-lang.org)!
+
+![](notes/readme/images/2021-07-28-21-39-41.png)
 
 -----
 
@@ -12,9 +14,9 @@ around learning Rust. You're welcome to browse around the code, but please don't
 expect proper, idiomatic Rust code just yet. For that I'd suggest the following
 resources:
 
-- [The Rust Book](https://doc.rust-lang.org/book/) - Seriously, read it "cover to cover" as it were. Coming from >15 years of C++ I debated whether it was worth reading the absolute basics, but I ended up going through it all and don't regret it one bit. 
+- [The Rust Book](https://doc.rust-lang.org/book/) - Seriously, read it "cover to cover" as it were. Coming from >15 years of C++ I debated whether it was worth reading the absolute basics, but I ended up going through it all and don't regret it one bit.
 - [Embedded Rust Book](https://docs.rust-embedded.org/book/start/registers.html) - I know, I know, another book. But it's quite a bit shorter and more of a getting-started guide to getting Rust up and running in an embedded context.
-- [m4vga-rs](https://github.com/cbiffle/m4vga-rs) - Not only is it a downright amazing implementation - 800x600@60FPS VGA on an STM32F4 (!) - the code is entirely in Rust and spectacularly well commented to boot! Definitely the place where I'm learning the most about Rust. 
+- [m4vga-rs](https://github.com/cbiffle/m4vga-rs) - Not only is it a downright amazing implementation - 800x600@60FPS VGA on an STM32F4 (!) - the code is entirely in Rust and spectacularly well commented to boot! Definitely the place where I'm learning the most about Rust.
 
 ---
 
@@ -32,4 +34,3 @@ But if you _really_ want to:
 2. Connect your [NUCLEO-G474RE](https://www.st.com/en/evaluation-tools/nucleo-g474re.html), and follow the [Embedded Rust steps for adding the proper udev rules](https://docs.rust-embedded.org/book/intro/install/linux.html#udev-rules)
 3. In VSCode, select `cortex-debug` launch configuraiton
 4. Hit `F5`
-
