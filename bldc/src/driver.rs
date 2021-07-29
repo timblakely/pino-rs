@@ -28,12 +28,16 @@ pub struct Init {
     pub tim3: device::TIM3,
     pub dma1: device::DMA1,
     pub dmamux: device::DMAMUX,
+    pub adc4: device::ADC4,
+    pub syst: device::SYST,
 }
 
 pub struct Ready<D: DrvState> {
     pub ma702: Ma702<Streaming>,
     pub drv: Drv8323rs<D>,
     pub gpioa: device::GPIOA,
+    // TODO(blakely): This shouldn't need to be public; implement wrapper function.
+    pub syst: device::SYST,
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -42,7 +46,7 @@ pub fn take_hardware() -> Controller<Init> {
 
     init(
         cp.NVIC, p.RCC, p.FLASH, p.PWR, p.GPIOA, p.GPIOB, p.GPIOC, p.FDCAN1, p.SPI1, p.SPI3,
-        p.TIM1, p.TIM3, p.DMA1, p.DMAMUX,
+        p.TIM1, p.TIM3, p.DMA1, p.DMAMUX, p.ADC4, cp.SYST,
     )
 }
 
@@ -61,6 +65,8 @@ fn init(
     tim3: device::TIM3,
     dma1: device::DMA1,
     dmamux: device::DMAMUX,
+    adc4: device::ADC4,
+    syst: device::SYST,
 ) -> Controller<Init> {
     disable_dead_battery_pd(&pwr);
 
@@ -86,6 +92,8 @@ fn init(
     rcc.ccipr.modify(|_, w| w.fdcansel().pllq());
     rcc.ahb1enr
         .modify(|_, w| w.dma1en().enabled().dmamuxen().enabled());
+    rcc.ahb2enr
+        .modify(|_, w| w.adc12en().enabled().adc345en().enabled());
     rcc.apb1enr1
         .modify(|_, w| w.fdcanen().enabled().tim3en().enabled());
     rcc.apb2enr
@@ -126,6 +134,8 @@ fn init(
             tim3,
             dma1,
             dmamux,
+            adc4,
+            syst,
         },
     }
 }
@@ -133,6 +143,7 @@ fn init(
 impl Controller<Init> {
     // TODO(blakely): Move into a device-specific, feature-guarded trait
     fn configure_gpio(&self) {
+        // TODO(blakely): Implement split-borrowing ro allow devices to take their own pins.
         // Configure GPIOA pins
         // PA4 - SPI1 - ENC_CS - AF5
         // PA5 - SPI1 - ENC_SCK - AF5
@@ -178,7 +189,7 @@ impl Controller<Init> {
         });
         gpiob
             .moder
-            .modify(|_, w| w.moder5().alternate().moder9().output());
+            .modify(|_, w| w.moder5().alternate().moder9().output().moder12().analog());
         gpioc.moder.modify(|_, w| {
             w.moder6()
                 .output()
@@ -434,9 +445,30 @@ impl Controller<Init> {
         tim1.dier.modify(|_, w| w.uie().set_bit());
     }
 
+    fn configure_adcs(&self) {
+        let adc4 = &self.mode_state.adc4;
+
+        // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
+        adc4.cr.modify(|_, w| {
+            w.deeppwd()
+                .disabled()
+                .advregen()
+                .enabled()
+                .adcaldif()
+                .single_ended()
+        });
+
+        // Begin calibration
+
+        // TODO(blakely): calibration (MUST BE DONE AFTER DEEPPWD)
+        // TODO(blakely): Single-ended (maybe before calib?)
+        // Check ADRDY in ADC_ISR
+    }
+
     pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
         self.configure_gpio();
         self.configure_timers();
+        self.configure_adcs();
 
         let ma702 = ma702::new(self.mode_state.spi1)
             .configure_spi()
@@ -505,6 +537,7 @@ impl Controller<Init> {
                 ma702,
                 drv,
                 gpioa: self.mode_state.gpioa,
+                syst: self.mode_state.syst,
             },
         };
         new_self

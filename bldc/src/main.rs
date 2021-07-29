@@ -2,6 +2,7 @@
 #![no_main]
 
 use bldc::driver;
+use bldc::util::stm32::blocking_sleep_us;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
@@ -15,7 +16,11 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let controller = driver::take_hardware().configure_peripherals();
+    let mut controller = driver::take_hardware().configure_peripherals();
+
+    let mut asdf = 1;
+    blocking_sleep_us(&mut controller.mode_state.syst, 1e6 as u32);
+    asdf += 1;
 
     loop {
         // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing - the
@@ -24,7 +29,10 @@ fn main() -> ! {
         // buffer, and as long as we can clear the backlog before the peripheral receives 4 requests
         // we should be good.
         // Alternatively, we could just process a single message here to make sure that we only hold
-        // this lock for the absolute minimum time.
+        // this lock for the absolute minimum time, since there's an internal buffer in the FDCAN.
+        // Bad form though...
+        // TODO(blakely): Move into the FDCAN device code and leverage the "token" strategy to
+        // ensure that this can only be called from the main thread.
         bldc::util::interrupts::free_from(
             device::interrupt::FDCAN1_INTR1_IT,
             &FDCAN_RECEIVE_BUF,

@@ -1,5 +1,6 @@
 // Following the example of stm32-rs
 
+use cortex_m::peripheral::{syst::SystClkSource, SYST};
 use stm32g4::stm32g474 as device;
 
 // Shamelessly lifted from m4vga-rs
@@ -149,4 +150,38 @@ pub mod clocks {
 // RCC.APB1EN, but everything from STM32CubeMX does it so why not?
 pub fn disable_dead_battery_pd(pwr: &device::PWR) {
     pwr.cr3.modify(|_, w| w.ucpd1_dbdis().bit(true));
+}
+
+// Use SysTick as a blocking timer instead of sacrificing a Timer peripheral. Since it's blocking,
+// we don't have to worry about the overhead of the interrupt, so we can actually do
+// microsecond-level blocking with a spinguard. Note that this disables the SysTick interrupt.
+pub fn blocking_sleep_us(systick: &mut SYST, us: u32) {
+    systick.disable_interrupt();
+    systick.disable_counter();
+    systick.set_clock_source(SystClkSource::Core);
+    // TODO(blakely): we're assuming a 170MHz core clock here. Actually pull the number from
+    // somewhere.
+    const TICKS_PER_US: u32 = (170e6 / 1e6) as u32;
+    let desired_ticks = us * TICKS_PER_US;
+    // The timer is 24 bit, so we have to loop if the desired number of ticks is > 2^24.
+    let (mut loop_count, remainder, reload) = match desired_ticks >= 1 << 24 {
+        true => (
+            desired_ticks >> 24,
+            desired_ticks & ((1 << 24) - 1),
+            (1 << 24) - 1,
+        ),
+        false => (0, 0, desired_ticks),
+    };
+    systick.set_reload(reload);
+    systick.enable_counter();
+    let _ = systick.has_wrapped();
+    while loop_count > 0 {
+        while !systick.has_wrapped() {}
+        loop_count -= 1;
+    }
+    if remainder > 0 {
+        systick.set_reload(remainder);
+        while !systick.has_wrapped() {}
+    }
+    systick.disable_counter();
 }
