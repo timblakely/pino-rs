@@ -6,5 +6,5 @@
   "rust-analyzer.inlayHints.enable": false,
   "lldb.displayFormat": "auto",
   "lldb.showDisassembly": "auto",
-  "lldb.dereferencePointers": true,
+  "lldb.dereferencePointers": true
 }
