@@ -485,9 +485,12 @@ impl Controller<Init> {
         });
 
         // Set up the ADC clocks. We're assuming we're running on a 170MHz AHB bus, so div=4 gives
-        // us 42.5MHz (below max freq of 52MHz).
+        // us 42.5MHz (below max freq of 60MHz for single or 52MHz for multiple channels).
         let adc345 = &self.mode_state.adc345;
         adc345.ccr.modify(|_, w| w.ckmode().sync_div4());
+        // adc345
+        //     .ccr
+        //     .modify(|_, w| unsafe { w.ckmode().sync_div4().presc().bits(0b1011) });
 
         // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
         adc4.cr
@@ -509,6 +512,32 @@ impl Controller<Init> {
         block_until!(adc4.isr.read().adrdy().bit_is_set());
         // Clear ready, for good measure.
         adc4.isr.modify(|_, w| w.adrdy().set_bit());
+
+        // Configure channels
+        // ADC4 only uses a single channel: IN3. L=0 implies 1 conversion.
+        // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
+        // long as it's 0-16 for L and 0-18 for SQx, we should be good.
+        adc4.cr.modify(|_, w| w.adstart().clear_bit());
+        adc4.sqr1
+            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(3) });
+        // Sampling time to 2.5 ADC clock cycles.
+        // adc4.smpr1.modify(|_, w| w.smp3().cycles2_5());
+        adc4.smpr1.modify(|_, w| w.smp3().cycles640_5());
+        // adc4.smpr1.modify(|_, w| w.smp3().cycles6_5());
+        // Set 12-bit continuous conversion mode with right-data-alignment, and ensure that no
+        // hardware trigger is used.
+        adc4.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .cont()
+                .set_bit()
+                .align()
+                .right()
+                .exten()
+                .disabled()
+        });
+        // Here goes nothin'... start it up.
+        adc4.cr.modify(|_, w| w.adstart().set_bit());
     }
 
     pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
