@@ -40,6 +40,7 @@ pub struct Init {
     pub dmamux: device::DMAMUX,
     pub adc345: device::ADC345_COMMON,
     pub adc4: device::ADC4,
+    pub adc5: device::ADC5,
 }
 
 pub struct Ready<D: DrvState> {
@@ -69,6 +70,7 @@ pub fn take_hardware() -> Controller<Init> {
         p.DMAMUX,
         p.ADC345_COMMON,
         p.ADC4,
+        p.ADC5,
         cp.SYST,
     )
 }
@@ -90,6 +92,7 @@ fn init(
     dmamux: device::DMAMUX,
     adc345: device::ADC345_COMMON,
     adc4: device::ADC4,
+    adc5: device::ADC5,
     syst: device::SYST,
 ) -> Controller<Init> {
     disable_dead_battery_pd(&pwr);
@@ -160,6 +163,7 @@ fn init(
             dmamux,
             adc345,
             adc4,
+            adc5,
         },
         syst: RefCell::new(syst),
     }
@@ -182,7 +186,7 @@ impl Controller<Init> {
         // PA15 - SPI3 - DRV_CS - AF6
         // PB5 - SPI3 - DRV_MOSI - AF6
         // PB9 - LED 1
-        // PB12 - SENSE_BAT
+        // PB12 - ADC4_IN3 - SENSE_BAT
         // PC6 - DRV_ENABLE
         // PC10 - SPI3 - DRV_SCK - AF6
         // PC11 - SPI3 - DRV_MISO - AF6
@@ -473,8 +477,19 @@ impl Controller<Init> {
 
     fn configure_adcs(&self) {
         let adc4 = &self.mode_state.adc4;
+        let adc5 = &self.mode_state.adc5;
         // Begin in a sane state.
         adc4.cr.modify(|_, w| {
+            w.adcal()
+                .clear_bit()
+                .aden()
+                .clear_bit()
+                .adstart()
+                .clear_bit()
+                .advregen()
+                .clear_bit()
+        });
+        adc5.cr.modify(|_, w| {
             w.adcal()
                 .clear_bit()
                 .aden()
@@ -487,11 +502,18 @@ impl Controller<Init> {
 
         // Set up the ADC clocks. We're assuming we're running on a 170MHz AHB bus, so div=4 gives
         // us 42.5MHz (below max freq of 60MHz for single or 52MHz for multiple channels).
-        let adc345 = &self.mode_state.adc345;
-        adc345.ccr.modify(|_, w| w.ckmode().sync_div4());
+        self.mode_state.adc345.ccr.modify(|_, w| {
+            w.ckmode()
+                .sync_div4()
+                // Bring up the Vref channel for ADC5
+                .vrefen()
+                .set_bit()
+        });
 
         // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
         adc4.cr
+            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
+        adc5.cr
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
 
         // Allow voltage regulator to warm up. Datasheet says 20us max.
@@ -502,16 +524,28 @@ impl Controller<Init> {
         adc4.cr.modify(|_, w| w.aden().clear_bit());
         adc4.cr.modify(|_, w| w.adcaldif().single_ended());
         adc4.cr.modify(|_, w| w.adcal().set_bit());
+        adc5.cr.modify(|_, w| w.aden().clear_bit());
+        adc5.cr.modify(|_, w| w.adcaldif().single_ended());
+        adc5.cr.modify(|_, w| w.adcal().set_bit());
+        // Wait for it to complete
         block_until!(adc4.cr.read().adcal().bit_is_clear());
+        block_until!(adc5.cr.read().adcal().bit_is_clear());
 
         // Check that we're ready, enable, and wait for ready state.
         adc4.isr.modify(|_, w| w.adrdy().set_bit());
         adc4.cr.modify(|_, w| w.aden().set_bit());
+        adc5.isr.modify(|_, w| w.adrdy().set_bit());
+        adc5.cr.modify(|_, w| w.aden().set_bit());
+        // Wait for ready
         block_until!(adc4.isr.read().adrdy().bit_is_set());
+        block_until!(adc5.isr.read().adrdy().bit_is_set());
         // Clear ready, for good measure.
         adc4.isr.modify(|_, w| w.adrdy().set_bit());
+        adc5.isr.modify(|_, w| w.adrdy().set_bit());
 
         // Configure channels
+
+        // ADC4
         // ADC4 only uses a single channel: IN3. L=0 implies 1 conversion.
         // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
         // long as it's 0-16 for L and 0-18 for SQx, we should be good.
@@ -521,7 +555,6 @@ impl Controller<Init> {
         // There's quite a bit of input resistance on the Vbus line. Datasheet suggests 39kOhm is
         // the upper limit for 60MHz sampling. We're using 42.5 and doing a single channel, so we
         // should be somewhat clear sampling for longer.
-        // adc4.smpr1.modify(|_, w| w.smp3().cycles47_5());
         adc4.smpr1.modify(|_, w| w.smp3().cycles640_5());
         // Set 12-bit continuous conversion mode with right-data-alignment, and ensure that no
         // hardware trigger is used. Also set overrun mode to allow overwrites of the data register,
@@ -540,6 +573,25 @@ impl Controller<Init> {
         });
         // Here goes nothin'... start it up.
         adc4.cr.modify(|_, w| w.adstart().set_bit());
+
+        // ADC5 - Similar to ADC4 above, but using IN18
+        adc5.cr.modify(|_, w| w.adstart().clear_bit());
+        adc5.sqr1
+            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(18) });
+        adc5.smpr2.modify(|_, w| w.smp18().cycles640_5());
+        adc5.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .cont()
+                .set_bit()
+                .align()
+                .right()
+                .exten()
+                .disabled()
+                .ovrmod()
+                .overwrite()
+        });
+        adc5.cr.modify(|_, w| w.adstart().set_bit());
     }
 
     pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {

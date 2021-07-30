@@ -10,6 +10,12 @@
   "rust-analyzer.checkOnSave.allTargets": false,
   "rust-analyzer.checkOnSave.target": "thumbv7em-none-eabihf",
   "cSpell.enableFiletypes": [
+    "!rust",
     "markdown"
+  ],
+  "cSpell.words": [
+    "Vdroop",
+    "Vref",
+    "breakin"
   ]
 }
