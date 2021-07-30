@@ -2,7 +2,6 @@
 #![no_main]
 
 use bldc::driver;
-use bldc::util::stm32::blocking_sleep_us;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
@@ -16,11 +15,7 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let mut controller = driver::take_hardware().configure_peripherals();
-
-    let mut asdf = 1;
-    blocking_sleep_us(&mut controller.mode_state.syst, 1e6 as u32);
-    asdf += 1;
+    let controller = driver::take_hardware().configure_peripherals();
 
     loop {
         // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing - the

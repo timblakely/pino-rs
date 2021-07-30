@@ -1,4 +1,6 @@
-use crate::util::stm32::{clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd};
+use crate::util::stm32::{
+    blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
+};
 use crate::{
     block_until,
     comms::fdcan::{self, Sram, FDCANSHARE},
@@ -8,6 +10,7 @@ use crate::{
     ic::drv8323rs,
     ic::ma702::{self, Ma702, Streaming},
 };
+use core::cell::RefCell;
 use cortex_m::peripheral as cm;
 use drv8323rs::{Drv8323rs, DrvState};
 use stm32g4::stm32g474 as device;
@@ -15,6 +18,13 @@ use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
 pub struct Controller<S> {
     pub mode_state: S,
+    syst: RefCell<device::SYST>,
+}
+
+impl<S> Controller<S> {
+    pub fn blocking_sleep_us(&self, us: u32) {
+        blocking_sleep_us(&mut self.syst.try_borrow_mut().unwrap(), us);
+    }
 }
 
 pub struct Init {
@@ -28,16 +38,14 @@ pub struct Init {
     pub tim3: device::TIM3,
     pub dma1: device::DMA1,
     pub dmamux: device::DMAMUX,
+    pub adc345: device::ADC345_COMMON,
     pub adc4: device::ADC4,
-    pub syst: device::SYST,
 }
 
 pub struct Ready<D: DrvState> {
     pub ma702: Ma702<Streaming>,
     pub drv: Drv8323rs<D>,
     pub gpioa: device::GPIOA,
-    // TODO(blakely): This shouldn't need to be public; implement wrapper function.
-    pub syst: device::SYST,
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -45,8 +53,23 @@ pub fn take_hardware() -> Controller<Init> {
     let p = device::Peripherals::take().unwrap();
 
     init(
-        cp.NVIC, p.RCC, p.FLASH, p.PWR, p.GPIOA, p.GPIOB, p.GPIOC, p.FDCAN1, p.SPI1, p.SPI3,
-        p.TIM1, p.TIM3, p.DMA1, p.DMAMUX, p.ADC4, cp.SYST,
+        cp.NVIC,
+        p.RCC,
+        p.FLASH,
+        p.PWR,
+        p.GPIOA,
+        p.GPIOB,
+        p.GPIOC,
+        p.FDCAN1,
+        p.SPI1,
+        p.SPI3,
+        p.TIM1,
+        p.TIM3,
+        p.DMA1,
+        p.DMAMUX,
+        p.ADC345_COMMON,
+        p.ADC4,
+        cp.SYST,
     )
 }
 
@@ -65,6 +88,7 @@ fn init(
     tim3: device::TIM3,
     dma1: device::DMA1,
     dmamux: device::DMAMUX,
+    adc345: device::ADC345_COMMON,
     adc4: device::ADC4,
     syst: device::SYST,
 ) -> Controller<Init> {
@@ -134,9 +158,10 @@ fn init(
             tim3,
             dma1,
             dmamux,
+            adc345,
             adc4,
-            syst,
         },
+        syst: RefCell::new(syst),
     }
 }
 
@@ -447,22 +472,43 @@ impl Controller<Init> {
 
     fn configure_adcs(&self) {
         let adc4 = &self.mode_state.adc4;
-
-        // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
+        // Begin in a sane state.
         adc4.cr.modify(|_, w| {
-            w.deeppwd()
-                .disabled()
+            w.adcal()
+                .clear_bit()
+                .aden()
+                .clear_bit()
+                .adstart()
+                .clear_bit()
                 .advregen()
-                .enabled()
-                .adcaldif()
-                .single_ended()
+                .clear_bit()
         });
 
-        // Begin calibration
+        // Set up the ADC clocks. We're assuming we're running on a 170MHz AHB bus, so div=4 gives
+        // us 42.5MHz (below max freq of 52MHz).
+        let adc345 = &self.mode_state.adc345;
+        adc345.ccr.modify(|_, w| w.ckmode().sync_div4());
 
-        // TODO(blakely): calibration (MUST BE DONE AFTER DEEPPWD)
-        // TODO(blakely): Single-ended (maybe before calib?)
-        // Check ADRDY in ADC_ISR
+        // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
+        adc4.cr
+            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
+
+        // Allow voltage regulator to warm up. Datasheet says 20us max.
+        self.blocking_sleep_us(20);
+
+        // Begin calibration
+        adc4.cr.modify(|_, w| w.aden().clear_bit());
+        // Can probably combine these, but kept separate in case the clear bit has to be set first.
+        adc4.cr.modify(|_, w| w.adcaldif().single_ended());
+        adc4.cr.modify(|_, w| w.adcal().set_bit());
+        block_until!(adc4.cr.read().adcal().bit_is_clear());
+
+        // Check that we're ready, enable, and wait for ready state.
+        adc4.isr.modify(|_, w| w.adrdy().set_bit());
+        adc4.cr.modify(|_, w| w.aden().set_bit());
+        block_until!(adc4.isr.read().adrdy().bit_is_set());
+        // Clear ready, for good measure.
+        adc4.isr.modify(|_, w| w.adrdy().set_bit());
     }
 
     pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
@@ -533,11 +579,11 @@ impl Controller<Init> {
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
         let new_self = Controller {
+            syst: self.syst,
             mode_state: Ready {
                 ma702,
                 drv,
                 gpioa: self.mode_state.gpioa,
-                syst: self.mode_state.syst,
             },
         };
         new_self
