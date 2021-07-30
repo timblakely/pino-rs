@@ -8,5 +8,8 @@
   "lldb.showDisassembly": "auto",
   "lldb.dereferencePointers": true,
   "rust-analyzer.checkOnSave.allTargets": false,
-  "rust-analyzer.checkOnSave.target": "thumbv7em-none-eabihf"
+  "rust-analyzer.checkOnSave.target": "thumbv7em-none-eabihf",
+  "cSpell.enableFiletypes": [
+    "markdown"
+  ]
 }

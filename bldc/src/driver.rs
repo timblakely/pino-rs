@@ -182,6 +182,7 @@ impl Controller<Init> {
         // PA15 - SPI3 - DRV_CS - AF6
         // PB5 - SPI3 - DRV_MOSI - AF6
         // PB9 - LED 1
+        // PB12 - SENSE_BAT
         // PC6 - DRV_ENABLE
         // PC10 - SPI3 - DRV_SCK - AF6
         // PC11 - SPI3 - DRV_MISO - AF6
@@ -497,8 +498,8 @@ impl Controller<Init> {
         self.blocking_sleep_us(20);
 
         // Begin calibration
-        adc4.cr.modify(|_, w| w.aden().clear_bit());
         // Can probably combine these, but kept separate in case the clear bit has to be set first.
+        adc4.cr.modify(|_, w| w.aden().clear_bit());
         adc4.cr.modify(|_, w| w.adcaldif().single_ended());
         adc4.cr.modify(|_, w| w.adcal().set_bit());
         block_until!(adc4.cr.read().adcal().bit_is_clear());
@@ -517,12 +518,14 @@ impl Controller<Init> {
         adc4.cr.modify(|_, w| w.adstart().clear_bit());
         adc4.sqr1
             .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(3) });
-        // Sampling time to 2.5 ADC clock cycles.
-        // adc4.smpr1.modify(|_, w| w.smp3().cycles2_5());
+        // There's quite a bit of input resistance on the Vbus line. Datasheet suggests 39kOhm is
+        // the upper limit for 60MHz sampling. We're using 42.5 and doing a single channel, so we
+        // should be somewhat clear sampling for longer.
+        // adc4.smpr1.modify(|_, w| w.smp3().cycles47_5());
         adc4.smpr1.modify(|_, w| w.smp3().cycles640_5());
-        // adc4.smpr1.modify(|_, w| w.smp3().cycles6_5());
         // Set 12-bit continuous conversion mode with right-data-alignment, and ensure that no
-        // hardware trigger is used.
+        // hardware trigger is used. Also set overrun mode to allow overwrites of the data register,
+        // otherwise it'll pause after one.
         adc4.cfgr.modify(|_, w| {
             w.res()
                 .bits12()
@@ -532,6 +535,8 @@ impl Controller<Init> {
                 .right()
                 .exten()
                 .disabled()
+                .ovrmod()
+                .overwrite()
         });
         // Here goes nothin'... start it up.
         adc4.cr.modify(|_, w| w.adstart().set_bit());
