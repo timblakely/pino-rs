@@ -488,9 +488,6 @@ impl Controller<Init> {
         // us 42.5MHz (below max freq of 60MHz for single or 52MHz for multiple channels).
         let adc345 = &self.mode_state.adc345;
         adc345.ccr.modify(|_, w| w.ckmode().sync_div4());
-        // adc345
-        //     .ccr
-        //     .modify(|_, w| unsafe { w.ckmode().sync_div4().presc().bits(0b1011) });
 
         // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
         adc4.cr
