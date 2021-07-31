@@ -38,6 +38,8 @@ pub struct Init {
     pub tim3: device::TIM3,
     pub dma1: device::DMA1,
     pub dmamux: device::DMAMUX,
+    pub adc12: device::ADC12_COMMON,
+    pub adc1: device::ADC1,
     pub adc345: device::ADC345_COMMON,
     pub adc4: device::ADC4,
     pub adc5: device::ADC5,
@@ -68,6 +70,8 @@ pub fn take_hardware() -> Controller<Init> {
         p.TIM3,
         p.DMA1,
         p.DMAMUX,
+        p.ADC12_COMMON,
+        p.ADC1,
         p.ADC345_COMMON,
         p.ADC4,
         p.ADC5,
@@ -90,6 +94,8 @@ fn init(
     tim3: device::TIM3,
     dma1: device::DMA1,
     dmamux: device::DMAMUX,
+    adc12: device::ADC12_COMMON,
+    adc1: device::ADC1,
     adc345: device::ADC345_COMMON,
     adc4: device::ADC4,
     adc5: device::ADC5,
@@ -161,6 +167,8 @@ fn init(
             tim3,
             dma1,
             dmamux,
+            adc12,
+            adc1,
             adc345,
             adc4,
             adc5,
@@ -174,6 +182,8 @@ impl Controller<Init> {
     fn configure_gpio(&self) {
         // TODO(blakely): Implement split-borrowing ro allow devices to take their own pins.
         // Configure GPIOA pins
+        // PA0 - ADC2_IN1 - SENSE_B
+        // PA1 - ADC1_IN2 - SENSE_A
         // PA4 - SPI1 - ENC_CS - AF5
         // PA5 - SPI1 - ENC_SCK - AF5
         // PA6 - SPI1 - ENC_MISO - AF5
@@ -184,6 +194,7 @@ impl Controller<Init> {
         // PA11 - FDCAN_RX, PUSHPULL, NOPULL, VERY_HIGH
         // PA12 - FDCAN_TX, PUSHPULL, NOPULL, VERY_HIGH
         // PA15 - SPI3 - DRV_CS - AF6
+        // PB1 - ADC3_IN1 - SENSE_C
         // PB5 - SPI3 - DRV_MOSI - AF6
         // PB9 - LED 1
         // PB12 - ADC4_IN3 - SENSE_BAT
@@ -196,7 +207,11 @@ impl Controller<Init> {
 
         // Pin modes
         gpioa.moder.modify(|_, w| {
-            w.moder4()
+            w.moder0()
+                .analog()
+                .moder1()
+                .analog()
+                .moder4()
                 .alternate()
                 .moder5()
                 .alternate()
@@ -217,9 +232,16 @@ impl Controller<Init> {
                 .moder15()
                 .alternate()
         });
-        gpiob
-            .moder
-            .modify(|_, w| w.moder5().alternate().moder9().output().moder12().analog());
+        gpiob.moder.modify(|_, w| {
+            w.moder1()
+                .analog()
+                .moder5()
+                .alternate()
+                .moder9()
+                .output()
+                .moder12()
+                .analog()
+        });
         gpioc.moder.modify(|_, w| {
             w.moder6()
                 .output()
@@ -371,7 +393,7 @@ impl Controller<Init> {
         // range.
         tim3.arr.write(|w| unsafe { w.arr().bits(42500) });
 
-        // Configure TIM3 for 40kHz control loop (80kHz frequency, since up + down = 1 full cycle).
+        // Configure TIM1 for 40kHz control loop (80kHz frequency, since up + down = 1 full cycle).
         let tim1 = &self.mode_state.tim1;
         // Stop the timer if it's running for some reason.
         tim1.cr1.modify(|_, w| w.cen().clear_bit());
@@ -390,7 +412,7 @@ impl Controller<Init> {
                 .ois3()
                 .clear_bit()
         });
-        // TODO(blakely): enable interrupts
+        // TODO(blakely): enable interrupts, if necessary
         // Configure output channels to PWM mode 1. Note: OCxM registers are split between the first
         // three bits and the fourth bit. For PWM mode 1 the fourth bit should be zero which is the
         // reset value, but it's good practice to manually set it anyway.
@@ -408,12 +430,10 @@ impl Controller<Init> {
                 .oc2m_3()
                 .clear_bit()
         });
-        // Note: We don't actually want OC4 to be used, since it's only purpose is to trigger the
-        // interrupt.
         tim1.ccmr2_output()
             .modify(|_, w| w.cc3s().output().oc3m().pwm_mode1().oc3m_3().clear_bit());
-        // Enable channels 1-5. 1-3 are the output pins, 4 is the interrupt, and 5 is used as the
-        // forced deadtime insertion. Set the output polarity to HIGH (rising edge).
+        // Enable channels 1-5. 1-3 are the output pins and 5 is used as the forced deadtime
+        // insertion. Set the output polarity to HIGH (rising edge).
         tim1.ccer.modify(|_, w| {
             w.cc1e()
                 .set_bit()
@@ -427,10 +447,6 @@ impl Controller<Init> {
                 .set_bit()
                 .cc3p()
                 .clear_bit()
-                .cc4e()
-                .set_bit()
-                .cc4p()
-                .clear_bit()
                 .cc5e()
                 .set_bit()
                 .cc5p()
@@ -438,7 +454,6 @@ impl Controller<Init> {
         });
         // 80kHz = Prescalar to 0, ARR to 2125
         tim1.psc.write(|w| w.psc().bits(0));
-        // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
         tim1.arr.write(|w| w.arr().bits(2125));
         // Set repetition counter to 1, since we only want update events on only after the full
         // up/down count cycle.
@@ -446,9 +461,13 @@ impl Controller<Init> {
         tim1.rcr.write(|w| unsafe { w.rep().bits(1) });
         // TODO(blakely): Actually use these in the control loop, but for now just set them to some
         // reasonable values.
-        tim1.ccr1.write(|w| w.ccr1().bits(2125));
-        tim1.ccr2.write(|w| w.ccr2().bits(1000));
-        tim1.ccr3.write(|w| w.ccr3().bits(2083));
+        // HACK HACK HACK - Disabled for testing with ADC timing
+        // tim1.ccr1.write(|w| w.ccr1().bits(2125));
+        // tim1.ccr2.write(|w| w.ccr2().bits(1000));
+        // tim1.ccr3.write(|w| w.ccr3().bits(2083));
+        tim1.ccr1.write(|w| w.ccr1().bits(10));
+        tim1.ccr2.write(|w| w.ccr2().bits(0));
+        tim1.ccr3.write(|w| w.ccr3().bits(0));
         // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
         // Enable master output bit.
         tim1.bdtr.modify(|_, w| w.moe().set_bit());
@@ -476,9 +495,20 @@ impl Controller<Init> {
     }
 
     fn configure_adcs(&self) {
+        let adc1 = &self.mode_state.adc1;
         let adc4 = &self.mode_state.adc4;
         let adc5 = &self.mode_state.adc5;
         // Begin in a sane state.
+        adc1.cr.modify(|_, w| {
+            w.adcal()
+                .clear_bit()
+                .aden()
+                .clear_bit()
+                .adstart()
+                .clear_bit()
+                .advregen()
+                .clear_bit()
+        });
         adc4.cr.modify(|_, w| {
             w.adcal()
                 .clear_bit()
@@ -502,6 +532,10 @@ impl Controller<Init> {
 
         // Set up the ADC clocks. We're assuming we're running on a 170MHz AHB bus, so div=4 gives
         // us 42.5MHz (below max freq of 60MHz for single or 52MHz for multiple channels).
+        self.mode_state
+            .adc12
+            .ccr
+            .modify(|_, w| w.ckmode().sync_div4());
         self.mode_state.adc345.ccr.modify(|_, w| {
             w.ckmode()
                 .sync_div4()
@@ -511,16 +545,22 @@ impl Controller<Init> {
         });
 
         // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
+        adc1.cr
+            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
         adc4.cr
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
         adc5.cr
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
 
-        // Allow voltage regulator to warm up. Datasheet says 20us max.
+        // Allow voltage regulators to warm up. Datasheet says 20us max.
         self.blocking_sleep_us(20);
 
         // Begin calibration
-        // Can probably combine these, but kept separate in case the clear bit has to be set first.
+        // Can probably combine these modifies, but kept separate in case the clear bit has to be
+        // set first.
+        adc1.cr.modify(|_, w| w.aden().clear_bit());
+        adc1.cr.modify(|_, w| w.adcaldif().single_ended());
+        adc1.cr.modify(|_, w| w.adcal().set_bit());
         adc4.cr.modify(|_, w| w.aden().clear_bit());
         adc4.cr.modify(|_, w| w.adcaldif().single_ended());
         adc4.cr.modify(|_, w| w.adcal().set_bit());
@@ -528,22 +568,30 @@ impl Controller<Init> {
         adc5.cr.modify(|_, w| w.adcaldif().single_ended());
         adc5.cr.modify(|_, w| w.adcal().set_bit());
         // Wait for it to complete
+        block_until!(adc1.cr.read().adcal().bit_is_clear());
         block_until!(adc4.cr.read().adcal().bit_is_clear());
         block_until!(adc5.cr.read().adcal().bit_is_clear());
 
-        // Check that we're ready, enable, and wait for ready state.
+        // Check that we're ready, enable, and wait for ready state. Initial adrdy.set_bit is to
+        // ensure it's cleared.
+        adc1.isr.modify(|_, w| w.adrdy().set_bit());
+        adc1.cr.modify(|_, w| w.aden().set_bit());
         adc4.isr.modify(|_, w| w.adrdy().set_bit());
         adc4.cr.modify(|_, w| w.aden().set_bit());
         adc5.isr.modify(|_, w| w.adrdy().set_bit());
         adc5.cr.modify(|_, w| w.aden().set_bit());
         // Wait for ready
+        block_until!(adc1.isr.read().adrdy().bit_is_set());
         block_until!(adc4.isr.read().adrdy().bit_is_set());
         block_until!(adc5.isr.read().adrdy().bit_is_set());
         // Clear ready, for good measure.
+        adc1.isr.modify(|_, w| w.adrdy().set_bit());
         adc4.isr.modify(|_, w| w.adrdy().set_bit());
         adc5.isr.modify(|_, w| w.adrdy().set_bit());
 
         // Configure channels
+
+        // ADC[123] - Current sense amplifiers
 
         // ADC4
         // ADC4 only uses a single channel: IN3. L=0 implies 1 conversion.
