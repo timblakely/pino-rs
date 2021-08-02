@@ -591,10 +591,38 @@ impl Controller<Init> {
 
         // Configure channels
 
-        // ADC[123] - Current sense amplifiers
+        // ADC[123] - Current sense amplifiers. Single channel inputs, and triggered by `tim_trgo2`.
+        adc1.cr.modify(|_, w| w.adstart().clear_bit());
+        // Note that L=0 implies 1 conversion.
+        // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
+        // long as it's 0-16 for L and 0-18 for SQx, we should be good.
+        adc1.sqr1
+            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(2) });
+        // Fastest sample time we can, since there should be little-to-no resistance coming in from
+        // the DRV current sense amplifier.
+        adc1.smpr1.modify(|_, w| w.smp2().cycles2_5());
+        // 12-bit non-continuous conversion (triggered).
+        adc1.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .rising_edge()
+                .extsel()
+                .tim1_trgo2()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .preserve()
+        });
+        // Start sampling.
+        adc1.cr.modify(|_, w| w.adstart().set_bit());
 
         // ADC4
-        // ADC4 only uses a single channel: IN3. L=0 implies 1 conversion.
+        // ADC4 only uses a single channel: IN3
         // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
         // long as it's 0-16 for L and 0-18 for SQx, we should be good.
         adc4.cr.modify(|_, w| w.adstart().clear_bit());
