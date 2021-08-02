@@ -151,6 +151,8 @@ fn init(
     // Safety: messing with interrupt priorities is inherently unsafe, but we disabled our device
     // interrupts above.
     unsafe {
+        // Ensure that the control loop is at the absolute highest priority.
+        nvic.set_priority(device::Interrupt::ADC1_2, 0x0);
         nvic.set_priority(device::Interrupt::FDCAN1_INTR0_IT, 0x10);
         nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0x10);
     }
@@ -383,9 +385,10 @@ impl Controller<Init> {
         tim3.cr1.modify(|_, w| w.dir().up().cms().edge_aligned());
         // Fire off a DMA on update (i.e. counter overflow)
         tim3.dier.modify(|_, w| w.ude().set_bit());
-        // Assuming 170MHz core clock, set prescalar to 3 and ARR to 42500 for 170e6/42500/4=1kHz.
-        // Why 3 and not 4? The timer clock is set to `core_clk / (PSC[PSC] + 1)`. If it were to use
-        // the value directly it'd divide the clock by zero on reset, which would be A Bad Thing.
+        // Assuming 170MHz core clock, set prescalar to 4 and ARR to 42500 for 170e6/42500/4=1kHz.
+        // Why is the value actually 3 and not 4? The timer clock is set to `core_clk / (PSC[PSC] +
+        // 1)`. If it were to use the value directly it'd divide the clock by zero on reset, which
+        // would be A Bad Thing.
         // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 3 is well
         // within range.
         tim3.psc.write(|w| w.psc().bits(3));
@@ -401,18 +404,26 @@ impl Controller<Init> {
         // Center-aligned mode 2: Up/Down and interrupts on up only.
         tim1.cr1
             .modify(|_, w| w.dir().up().cms().center_aligned2().ckd().div1());
-        // Enable output state low on idle.
+        // Enable output state low on idle. Also set the master mode so that trgo2 is written based
+        // on `tim_oc4refc`
+        // Safety: mms2 doesn't have a valid range or enum set. Bits 0b0111 are tim_oc4refc.
         tim1.cr2.modify(|_, w| {
-            w.ccpc()
-                .clear_bit()
-                .ois1()
-                .clear_bit()
-                .ois2()
-                .clear_bit()
-                .ois3()
-                .clear_bit()
+            unsafe {
+                w.ccpc()
+                    .clear_bit()
+                    .ois1()
+                    .clear_bit()
+                    .ois2()
+                    .clear_bit()
+                    .ois3()
+                    .clear_bit()
+                    .ois4()
+                    .clear_bit()
+                    // Configure tim_oc4refc to be on ch4. Note that this must be on mms2 for trgo2!
+                    .mms2()
+                    .bits(0b0111)
+            }
         });
-        // TODO(blakely): enable interrupts, if necessary
         // Configure output channels to PWM mode 1. Note: OCxM registers are split between the first
         // three bits and the fourth bit. For PWM mode 1 the fourth bit should be zero which is the
         // reset value, but it's good practice to manually set it anyway.
@@ -430,10 +441,23 @@ impl Controller<Init> {
                 .oc2m_3()
                 .clear_bit()
         });
-        tim1.ccmr2_output()
-            .modify(|_, w| w.cc3s().output().oc3m().pwm_mode1().oc3m_3().clear_bit());
-        // Enable channels 1-5. 1-3 are the output pins and 5 is used as the forced deadtime
-        // insertion. Set the output polarity to HIGH (rising edge).
+        tim1.ccmr2_output().modify(|_, w| {
+            w.cc3s()
+                .output()
+                .oc3m()
+                .pwm_mode1()
+                .oc3m_3()
+                .clear_bit()
+                .cc4s()
+                .output()
+                .oc4m()
+                .pwm_mode1()
+                .oc4m_3()
+                .clear_bit()
+        });
+        // Enable channels 1-5. 1-3 are the output pins, channel 4 is used to trigger the current
+        // sampling, and 5 is used as the forced deadtime insertion. Set the output polarity to HIGH
+        // (rising edge).
         tim1.ccer.modify(|_, w| {
             w.cc1e()
                 .set_bit()
@@ -447,15 +471,19 @@ impl Controller<Init> {
                 .set_bit()
                 .cc3p()
                 .clear_bit()
+                .cc4e()
+                .set_bit()
+                .cc4p()
+                .clear_bit()
                 .cc5e()
                 .set_bit()
                 .cc5p()
                 .clear_bit()
         });
-        // 80kHz = Prescalar to 0, ARR to 2125
+        // 80kHz@170MHz = Prescalar to 0, ARR to 2125
         tim1.psc.write(|w| w.psc().bits(0));
         tim1.arr.write(|w| w.arr().bits(2125));
-        // Set repetition counter to 1, since we only want update events on only after the full
+        // Set repetition counter to 1, since we only want update TIM1 events on only after the full
         // up/down count cycle.
         // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
         tim1.rcr.write(|w| unsafe { w.rep().bits(1) });
@@ -465,9 +493,12 @@ impl Controller<Init> {
         // tim1.ccr1.write(|w| w.ccr1().bits(2125));
         // tim1.ccr2.write(|w| w.ccr2().bits(1000));
         // tim1.ccr3.write(|w| w.ccr3().bits(2083));
-        tim1.ccr1.write(|w| w.ccr1().bits(10));
+        tim1.ccr1.write(|w| w.ccr1().bits(2125));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
+        // Set channel 4 to trigger _just_ before the midway point.
+        tim1.ccr4.write(|w| w.ccr4().bits(2124));
+        // Enable master output. If this isn't set, the timer doesn't actually start when enabled.
         // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
         // Enable master output bit.
         tim1.bdtr.modify(|_, w| w.moe().set_bit());
@@ -490,8 +521,6 @@ impl Controller<Init> {
                 .ccr5()
                 .bits(2083)
         });
-        // Enable interrupt for update
-        tim1.dier.modify(|_, w| w.uie().set_bit());
     }
 
     fn configure_adcs(&self) {
@@ -618,6 +647,8 @@ impl Controller<Init> {
                 .ovrmod()
                 .preserve()
         });
+        // Enable interrupt on ADC1 EOS
+        adc1.ier.modify(|_, w| w.eosie().enabled());
         // Start sampling.
         adc1.cr.modify(|_, w| w.adstart().set_bit());
 
@@ -729,8 +760,8 @@ impl Controller<Init> {
         enable_irq(device::Interrupt::FDCAN1_INTR0_IT);
         // Rx IRQ
         enable_irq(device::Interrupt::FDCAN1_INTR1_IT);
-        // TIM1 Update
-        enable_irq(device::Interrupt::TIM1_UP_TIM16);
+        // ADC1 IRQ
+        enable_irq(device::Interrupt::ADC1_2);
 
         // Kick off tim1.
         self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
