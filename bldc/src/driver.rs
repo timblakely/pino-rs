@@ -22,12 +22,6 @@ pub struct Controller<S> {
     syst: RefCell<device::SYST>,
 }
 
-impl<S> Controller<S> {
-    pub fn blocking_sleep_us(&self, us: u32) {
-        blocking_sleep_us(&mut self.syst.try_borrow_mut().unwrap(), us);
-    }
-}
-
 pub struct Init {
     pub fdcan: device::FDCAN1,
     pub gpioa: device::GPIOA,
@@ -41,7 +35,9 @@ pub struct Init {
     pub dmamux: device::DMAMUX,
     pub adc12: device::ADC12_COMMON,
     pub adc1: device::ADC1,
+    pub adc2: device::ADC2,
     pub adc345: device::ADC345_COMMON,
+    pub adc3: device::ADC3,
     pub adc4: device::ADC4,
     pub adc5: device::ADC5,
     pub cordic: device::CORDIC,
@@ -74,7 +70,9 @@ pub fn take_hardware() -> Controller<Init> {
         p.DMAMUX,
         p.ADC12_COMMON,
         p.ADC1,
+        p.ADC2,
         p.ADC345_COMMON,
+        p.ADC3,
         p.ADC4,
         p.ADC5,
         p.CORDIC,
@@ -99,7 +97,9 @@ fn init(
     dmamux: device::DMAMUX,
     adc12: device::ADC12_COMMON,
     adc1: device::ADC1,
+    adc2: device::ADC2,
     adc345: device::ADC345_COMMON,
+    adc3: device::ADC3,
     adc4: device::ADC4,
     adc5: device::ADC5,
     cordic: device::CORDIC,
@@ -181,7 +181,9 @@ fn init(
             dmamux,
             adc12,
             adc1,
+            adc2,
             adc345,
+            adc3,
             adc4,
             adc5,
             cordic,
@@ -504,7 +506,7 @@ impl Controller<Init> {
         // tim1.ccr1.write(|w| w.ccr1().bits(2125));
         // tim1.ccr2.write(|w| w.ccr2().bits(1000));
         // tim1.ccr3.write(|w| w.ccr3().bits(2083));
-        tim1.ccr1.write(|w| w.ccr1().bits(2125));
+        tim1.ccr1.write(|w| w.ccr1().bits(0));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
         // Set channel 4 to trigger _just_ before the midway point.
@@ -534,12 +536,34 @@ impl Controller<Init> {
         });
     }
 
-    fn configure_adcs(&self) {
+    fn configure_adcs(&self, syst: &mut device::SYST) {
         let adc1 = &self.mode_state.adc1;
+        let adc2 = &self.mode_state.adc2;
+        let adc3 = &self.mode_state.adc3;
         let adc4 = &self.mode_state.adc4;
         let adc5 = &self.mode_state.adc5;
         // Begin in a sane state.
         adc1.cr.modify(|_, w| {
+            w.adcal()
+                .clear_bit()
+                .aden()
+                .clear_bit()
+                .adstart()
+                .clear_bit()
+                .advregen()
+                .clear_bit()
+        });
+        adc2.cr.modify(|_, w| {
+            w.adcal()
+                .clear_bit()
+                .aden()
+                .clear_bit()
+                .adstart()
+                .clear_bit()
+                .advregen()
+                .clear_bit()
+        });
+        adc3.cr.modify(|_, w| {
             w.adcal()
                 .clear_bit()
                 .aden()
@@ -587,13 +611,17 @@ impl Controller<Init> {
         // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
         adc1.cr
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
+        adc2.cr
+            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
+        adc3.cr
+            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
         adc4.cr
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
         adc5.cr
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
 
         // Allow voltage regulators to warm up. Datasheet says 20us max.
-        self.blocking_sleep_us(20);
+        blocking_sleep_us(syst, 20);
 
         // Begin calibration
         // Can probably combine these modifies, but kept separate in case the clear bit has to be
@@ -601,6 +629,12 @@ impl Controller<Init> {
         adc1.cr.modify(|_, w| w.aden().clear_bit());
         adc1.cr.modify(|_, w| w.adcaldif().single_ended());
         adc1.cr.modify(|_, w| w.adcal().set_bit());
+        adc2.cr.modify(|_, w| w.aden().clear_bit());
+        adc2.cr.modify(|_, w| w.adcaldif().single_ended());
+        adc2.cr.modify(|_, w| w.adcal().set_bit());
+        adc3.cr.modify(|_, w| w.aden().clear_bit());
+        adc3.cr.modify(|_, w| w.adcaldif().single_ended());
+        adc3.cr.modify(|_, w| w.adcal().set_bit());
         adc4.cr.modify(|_, w| w.aden().clear_bit());
         adc4.cr.modify(|_, w| w.adcaldif().single_ended());
         adc4.cr.modify(|_, w| w.adcal().set_bit());
@@ -616,16 +650,24 @@ impl Controller<Init> {
         // ensure it's cleared.
         adc1.isr.modify(|_, w| w.adrdy().set_bit());
         adc1.cr.modify(|_, w| w.aden().set_bit());
+        adc2.isr.modify(|_, w| w.adrdy().set_bit());
+        adc2.cr.modify(|_, w| w.aden().set_bit());
+        adc3.isr.modify(|_, w| w.adrdy().set_bit());
+        adc3.cr.modify(|_, w| w.aden().set_bit());
         adc4.isr.modify(|_, w| w.adrdy().set_bit());
         adc4.cr.modify(|_, w| w.aden().set_bit());
         adc5.isr.modify(|_, w| w.adrdy().set_bit());
         adc5.cr.modify(|_, w| w.aden().set_bit());
         // Wait for ready
         block_until!(adc1.isr.read().adrdy().bit_is_set());
+        block_until!(adc2.isr.read().adrdy().bit_is_set());
+        block_until!(adc3.isr.read().adrdy().bit_is_set());
         block_until!(adc4.isr.read().adrdy().bit_is_set());
         block_until!(adc5.isr.read().adrdy().bit_is_set());
         // Clear ready, for good measure.
         adc1.isr.modify(|_, w| w.adrdy().set_bit());
+        adc2.isr.modify(|_, w| w.adrdy().set_bit());
+        adc3.isr.modify(|_, w| w.adrdy().set_bit());
         adc4.isr.modify(|_, w| w.adrdy().set_bit());
         adc5.isr.modify(|_, w| w.adrdy().set_bit());
 
@@ -633,14 +675,22 @@ impl Controller<Init> {
 
         // ADC[123] - Current sense amplifiers. Single channel inputs, and triggered by `tim_trgo2`.
         adc1.cr.modify(|_, w| w.adstart().clear_bit());
+        adc2.cr.modify(|_, w| w.adstart().clear_bit());
+        adc3.cr.modify(|_, w| w.adstart().clear_bit());
         // Note that L=0 implies 1 conversion.
         // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
         // long as it's 0-16 for L and 0-18 for SQx, we should be good.
         adc1.sqr1
             .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(2) });
+        adc2.sqr1
+            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(1) });
+        adc3.sqr1
+            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(1) });
         // Fastest sample time we can, since there should be little-to-no resistance coming in from
         // the DRV current sense amplifier.
         adc1.smpr1.modify(|_, w| w.smp2().cycles2_5());
+        adc2.smpr1.modify(|_, w| w.smp1().cycles2_5());
+        adc3.smpr1.modify(|_, w| w.smp1().cycles2_5());
         // 12-bit non-continuous conversion (triggered).
         adc1.cfgr.modify(|_, w| {
             w.res()
@@ -658,10 +708,45 @@ impl Controller<Init> {
                 .ovrmod()
                 .preserve()
         });
-        // Enable interrupt on ADC1 EOS
+        adc2.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .rising_edge()
+                .extsel()
+                .tim1_trgo2()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .preserve()
+        });
+        adc3.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .rising_edge()
+                .extsel()
+                .tim1_trgo2()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .preserve()
+        });
+        // Enable interrupt on ADC1 EOS. Only needed for ADC1, since 2 and 3 are sync'd to the same
+        // tim_trgo2.
         adc1.ier.modify(|_, w| w.eosie().enabled());
         // Start sampling.
         adc1.cr.modify(|_, w| w.adstart().set_bit());
+        adc2.cr.modify(|_, w| w.adstart().set_bit());
+        adc3.cr.modify(|_, w| w.adstart().set_bit());
 
         // ADC4
         // ADC4 only uses a single channel: IN3
@@ -715,7 +800,7 @@ impl Controller<Init> {
     pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
         self.configure_gpio();
         self.configure_timers();
-        self.configure_adcs();
+        self.configure_adcs(&mut self.syst.borrow_mut());
 
         let ma702 = ma702::new(self.mode_state.spi1)
             .configure_spi()
@@ -726,25 +811,77 @@ impl Controller<Init> {
             drv8323rs::new(self.mode_state.spi3).enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
 
         // Configure DRV8323RS.
-        use drv8323rs::registers::*;
-        drv.control_register().update(|_, w| {
-            w.pwm_mode()
-                .variant(PwmMode::Pwm3x)
-                .clear_latched_faults()
-                .set_bit()
-        });
-        drv.current_sense().update(|_, w| {
-            w.vref_divisor()
-                .variant(CsaDivisor::Two)
-                .current_sense_gain()
-                .variant(CsaGain::V40)
-                .sense_level()
-                .variant(SenseOcp::V1)
-        });
+        {
+            use drv8323rs::registers::*;
+            drv.control_register().update(|_, w| {
+                w.disable_gate_drive_fault()
+                    .clear_bit()
+                    .disable_uvlo()
+                    .clear_bit()
+                    .pwm_mode()
+                    .variant(PwmMode::Pwm3x)
+                    .clear_latched_faults()
+                    .set_bit()
+            });
+            drv.current_sense().update(|_, w| {
+                w.vref_divisor()
+                    .variant(CsaDivisor::Two)
+                    .current_sense_gain()
+                    .variant(CsaGain::V40)
+                    .sense_level()
+                    .variant(SenseOcp::V1)
+                    .overcurrent_fault()
+                    .variant(SenseOvercurrent::Enabled)
+            });
+            // Begin ADC calibration. Requires >=100us
+            drv.current_sense().update(|_, w| {
+                w.offset_calibration_a()
+                    .variant(OffsetCalibration::Calibration)
+                    .offset_calibration_b()
+                    .variant(OffsetCalibration::Calibration)
+                    .offset_calibration_c()
+                    .variant(OffsetCalibration::Calibration)
+            });
+            blocking_sleep_us(&mut self.syst.borrow_mut(), 1000);
+            // Leave calibration mode
+            drv.current_sense().update(|_, w| {
+                w.offset_calibration_a()
+                    .variant(OffsetCalibration::Normal)
+                    .offset_calibration_b()
+                    .variant(OffsetCalibration::Normal)
+                    .offset_calibration_c()
+                    .variant(OffsetCalibration::Normal)
+            });
 
-        // HACK HACK HACK
-        // Disable drv for now while we work on TIM1. Don't want to accidentally short anything.
-        let drv = drv.disable(|| gpioc.bsrr.write(|w| w.br6().set_bit()));
+            // Use 1A drive current for FETs
+            drv.gate_drive_hs().update(|_, w| {
+                w.idrive_p_high_side()
+                    .variant(DriveCurrent::Milli1000)
+                    .idrive_n_high_side()
+                    .variant(DriveCurrent::Milli1000)
+            });
+            drv.gate_drive_ls().update(|_, w| {
+                w.idrive_p_low_side()
+                    .variant(DriveCurrent::Milli1000)
+                    .idrive_n_low_side()
+                    .variant(DriveCurrent::Milli1000)
+            });
+
+            // Reset config after calibration
+            drv.current_sense().update(|_, w| {
+                w.vref_divisor()
+                    .variant(CsaDivisor::Two)
+                    .current_sense_gain()
+                    .variant(CsaGain::V40)
+                    .sense_level()
+                    .variant(SenseOcp::V1)
+                    .overcurrent_fault()
+                    .variant(SenseOvercurrent::Enabled)
+            });
+
+            let _asdf = drv.fault_status_1().read();
+            let _toot = 123;
+        }
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)
@@ -779,14 +916,13 @@ impl Controller<Init> {
         // Kick off tim3.
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
-        // TODO(blakely): Move this into the commutation code.
         let cordic = self.mode_state.cordic;
         // Safety: yet another SVD range missing. Valid ranges for precision is 1-15
         cordic.csr.modify(|_, w| unsafe {
             w.func()
                 .cosine()
                 .precision()
-                // 20 iterations / 4 = 5
+                // 20 iterations / 4 = 5 cycles
                 .bits(5)
                 .nres()
                 .num2()
@@ -797,6 +933,8 @@ impl Controller<Init> {
                 .argsize()
                 .bits32()
         });
+
+        // TODO(blakely): Move this into the commutation code.
         // Try it out
         // Note that the input to the CORDIC is theta/pi. Kinda nice in a way...
         let pi_over_3: I1F31 = I1F31::from_num(1f32 / 3f32);
