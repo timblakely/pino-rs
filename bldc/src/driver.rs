@@ -13,6 +13,7 @@ use crate::{
 use core::cell::RefCell;
 use cortex_m::peripheral as cm;
 use drv8323rs::{Drv8323rs, DrvState};
+use fixed::types::I1F31;
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
@@ -43,6 +44,7 @@ pub struct Init {
     pub adc345: device::ADC345_COMMON,
     pub adc4: device::ADC4,
     pub adc5: device::ADC5,
+    pub cordic: device::CORDIC,
 }
 
 pub struct Ready<D: DrvState> {
@@ -75,6 +77,7 @@ pub fn take_hardware() -> Controller<Init> {
         p.ADC345_COMMON,
         p.ADC4,
         p.ADC5,
+        p.CORDIC,
         cp.SYST,
     )
 }
@@ -99,6 +102,7 @@ fn init(
     adc345: device::ADC345_COMMON,
     adc4: device::ADC4,
     adc5: device::ADC5,
+    cordic: device::CORDIC,
     syst: device::SYST,
 ) -> Controller<Init> {
     disable_dead_battery_pd(&pwr);
@@ -123,8 +127,14 @@ fn init(
 
     // Enable various peripheral clocks
     rcc.ccipr.modify(|_, w| w.fdcansel().pllq());
-    rcc.ahb1enr
-        .modify(|_, w| w.dma1en().enabled().dmamuxen().enabled());
+    rcc.ahb1enr.modify(|_, w| {
+        w.dma1en()
+            .enabled()
+            .dmamuxen()
+            .enabled()
+            .cordicen()
+            .set_bit()
+    });
     rcc.ahb2enr
         .modify(|_, w| w.adc12en().enabled().adc345en().enabled());
     rcc.apb1enr1
@@ -174,6 +184,7 @@ fn init(
             adc345,
             adc4,
             adc5,
+            cordic,
         },
         syst: RefCell::new(syst),
     }
@@ -767,6 +778,35 @@ impl Controller<Init> {
         self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
         // Kick off tim3.
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
+
+        // TODO(blakely): Move this into the commutation code.
+        let cordic = self.mode_state.cordic;
+        // Safety: yet another SVD range missing. Valid ranges for precision is 1-15
+        cordic.csr.modify(|_, w| unsafe {
+            w.func()
+                .cosine()
+                .precision()
+                // 20 iterations / 4 = 5
+                .bits(5)
+                .nres()
+                .num2()
+                .nargs()
+                .num1()
+                .ressize()
+                .bits32()
+                .argsize()
+                .bits32()
+        });
+        // Try it out
+        // Note that the input to the CORDIC is theta/pi. Kinda nice in a way...
+        let pi_over_3: I1F31 = I1F31::from_num(1f32 / 3f32);
+        // Safety: Needs valid range in SVD. Supports full range of Q1.31 [-1,1-2^-31]
+        cordic
+            .wdata
+            .write(|w| unsafe { w.bits(pi_over_3.to_bits() as u32) });
+        block_until!(cordic.csr.read().rrdy().is_ready());
+        let _cos: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
+        let _sin: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
 
         let new_self = Controller {
             syst: self.syst,
