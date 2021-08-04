@@ -506,7 +506,7 @@ impl Controller<Init> {
         // tim1.ccr1.write(|w| w.ccr1().bits(2125));
         // tim1.ccr2.write(|w| w.ccr2().bits(1000));
         // tim1.ccr3.write(|w| w.ccr3().bits(2083));
-        tim1.ccr1.write(|w| w.ccr1().bits(0));
+        tim1.ccr1.write(|w| w.ccr1().bits(4));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
         // Set channel 4 to trigger _just_ before the midway point.
@@ -879,9 +879,13 @@ impl Controller<Init> {
                     .variant(SenseOvercurrent::Enabled)
             });
 
-            let _asdf = drv.fault_status_1().read();
-            let _toot = 123;
+            // let _asdf = drv.fault_status_1().read();
+            // let _toot = 123;
         }
+
+        // HACKHACKHACK
+        // Disabling DRV while I investigate the PWM modes
+        let drv = drv.disable(|| gpioc.bsrr.write(|w| w.br6().set_bit()));
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)
