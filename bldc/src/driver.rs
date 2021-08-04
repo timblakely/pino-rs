@@ -506,15 +506,11 @@ impl Controller<Init> {
         // tim1.ccr1.write(|w| w.ccr1().bits(2125));
         // tim1.ccr2.write(|w| w.ccr2().bits(1000));
         // tim1.ccr3.write(|w| w.ccr3().bits(2083));
-        tim1.ccr1.write(|w| w.ccr1().bits(4));
+        tim1.ccr1.write(|w| w.ccr1().bits(60));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
         // Set channel 4 to trigger _just_ before the midway point.
         tim1.ccr4.write(|w| w.ccr4().bits(2124));
-        // Enable master output. If this isn't set, the timer doesn't actually start when enabled.
-        // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
-        // Enable master output bit.
-        tim1.bdtr.modify(|_, w| w.moe().set_bit());
         // Set ch5 to PWM mode and enable it.
         // Safety: Upstream: needs enum values. PWM mode 1 is 0110.
         tim1.ccmr3_output
@@ -885,7 +881,7 @@ impl Controller<Init> {
 
         // HACKHACKHACK
         // Disabling DRV while I investigate the PWM modes
-        let drv = drv.disable(|| gpioc.bsrr.write(|w| w.br6().set_bit()));
+        // let drv = drv.disable(|| gpioc.bsrr.write(|w| w.br6().set_bit()));
 
         // Configure FDCAN
         let mut fdcan = fdcan::take(self.mode_state.fdcan)
@@ -917,6 +913,11 @@ impl Controller<Init> {
 
         // Kick off tim1.
         self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
+        // Now that the timer has started, enable the main output to allow current on the pins. If
+        // we do this before we enable the time, we have the potential to get into a state where the
+        // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+        // current through the high phase to any low phases.
+        self.mode_state.tim1.bdtr.modify(|_, w| w.moe().set_bit());
         // Kick off tim3.
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
