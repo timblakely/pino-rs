@@ -170,11 +170,12 @@ pub fn blocking_sleep_us(systick: &mut SYST, us: u32) {
             desired_ticks & ((1 << 24) - 1),
             (1 << 24) - 1,
         ),
-        false => (0, 0, desired_ticks),
+        false => (1, 0, desired_ticks),
     };
+    systick.clear_current();
     systick.set_reload(reload);
-    systick.enable_counter();
     let _ = systick.has_wrapped();
+    systick.enable_counter();
     while loop_count > 0 {
         while !systick.has_wrapped() {}
         loop_count -= 1;
