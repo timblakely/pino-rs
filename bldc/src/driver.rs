@@ -506,7 +506,7 @@ impl Controller<Init> {
         // tim1.ccr1.write(|w| w.ccr1().bits(2125));
         // tim1.ccr2.write(|w| w.ccr2().bits(1000));
         // tim1.ccr3.write(|w| w.ccr3().bits(2083));
-        tim1.ccr1.write(|w| w.ccr1().bits(60));
+        tim1.ccr1.write(|w| w.ccr1().bits(40));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
         // Set channel 4 to trigger _just_ before the midway point.
@@ -805,7 +805,8 @@ impl Controller<Init> {
         let gpioc = &self.mode_state.gpioc;
         let drv =
             drv8323rs::new(self.mode_state.spi3).enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
-
+        // Sleepy DRV requires a whole millisecond to wake up!
+        blocking_sleep_us(&mut self.syst.borrow_mut(), 1000);
         // Configure DRV8323RS.
         {
             use drv8323rs::registers::*;
@@ -838,7 +839,7 @@ impl Controller<Init> {
                     .offset_calibration_c()
                     .variant(OffsetCalibration::Calibration)
             });
-            blocking_sleep_us(&mut self.syst.borrow_mut(), 1000);
+            blocking_sleep_us(&mut self.syst.borrow_mut(), 200);
             // Leave calibration mode
             drv.current_sense().update(|_, w| {
                 w.offset_calibration_a()
