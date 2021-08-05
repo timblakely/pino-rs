@@ -639,6 +639,8 @@ impl Controller<Init> {
         adc5.cr.modify(|_, w| w.adcal().set_bit());
         // Wait for it to complete
         block_until!(adc1.cr.read().adcal().bit_is_clear());
+        block_until!(adc2.cr.read().adcal().bit_is_clear());
+        block_until!(adc3.cr.read().adcal().bit_is_clear());
         block_until!(adc4.cr.read().adcal().bit_is_clear());
         block_until!(adc5.cr.read().adcal().bit_is_clear());
 
@@ -702,7 +704,7 @@ impl Controller<Init> {
                 .discen()
                 .disabled()
                 .ovrmod()
-                .preserve()
+                .overwrite()
         });
         adc2.cfgr.modify(|_, w| {
             w.res()
@@ -718,7 +720,7 @@ impl Controller<Init> {
                 .discen()
                 .disabled()
                 .ovrmod()
-                .preserve()
+                .overwrite()
         });
         adc3.cfgr.modify(|_, w| {
             w.res()
@@ -734,7 +736,7 @@ impl Controller<Init> {
                 .discen()
                 .disabled()
                 .ovrmod()
-                .preserve()
+                .overwrite()
         });
         // Enable interrupt on ADC1 EOS. Only needed for ADC1, since 2 and 3 are sync'd to the same
         // tim_trgo2.
@@ -762,7 +764,7 @@ impl Controller<Init> {
             w.res()
                 .bits12()
                 .cont()
-                .set_bit()
+                .continuous()
                 .align()
                 .right()
                 .exten()
