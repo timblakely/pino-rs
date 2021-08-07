@@ -84,7 +84,11 @@ impl TxFifo {
         &mut self.data
     }
 
-    pub fn assign(&mut self, frame: &dyn ExtendedFdcanFrame) {
+    // pub fn assign(&mut self, frame: &dyn ExtendedFdcanFrame) {
+    pub fn assign<T>(&mut self, frame: &T)
+    where
+        T: ExtendedFdcanFrame,
+    {
         let id = frame.id();
         self.t0.update(|_, w| {
             w.error_state()

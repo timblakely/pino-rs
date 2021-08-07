@@ -249,44 +249,35 @@ impl Fdcan<Init> {
 }
 
 pub trait StandardFdcanFrame {
+    // Unique ID for the frame
     fn id(&self) -> u16;
+
+    // Unpack the message from a buffer.
+    fn unpack(buffer: &[u32; 2]) -> Self
+    where
+        Self: Sized;
+
+    // Pack the message into a buffer of up to 8 bytes, returning the number of bytes that were
+    // packed.
     fn pack(&self, buffer: &mut [u32; 2]) -> u8;
 }
+
 pub trait ExtendedFdcanFrame {
+    // Unique ID for the frame
     fn id(&self) -> u32;
+
+    // Unpack the message from a buffer.
+    fn unpack(buffer: &[u32; 16]) -> Self
+    where
+        Self: Sized;
+
+    // Pack the message into a buffer of up to 64 bytes, returning the number of bytes that were
+    // packed.
     fn pack(&self, buffer: &mut [u32; 16]) -> u8;
 }
 
-// Just for testing; do not use in regular communication.
-struct DebugMessage {
-    foo: u32,
-    bar: f32,
-    baz: u8,
-    toot: &'static [u8; 3],
-}
-impl ExtendedFdcanFrame for DebugMessage {
-    fn id(&self) -> u32 {
-        0xA
-    }
-    fn pack(&self, buffer: &mut [u32; 16]) -> u8 {
-        buffer[0] = self.foo;
-        buffer[1] = self.bar.to_bits();
-        buffer[2] = (self.baz as u32) << 24
-            | (self.toot[2] as u32) << 16
-            | (self.toot[1] as u32) << 8
-            | (self.toot[0] as u32);
-        3
-    }
-}
-
 impl Fdcan<Running> {
-    pub fn send_message(&mut self) -> &mut Self {
-        let message = DebugMessage {
-            foo: 123,
-            bar: 77.44,
-            baz: 8,
-            toot: b"ASD",
-        };
+    pub fn send_message(&mut self, message: impl ExtendedFdcanFrame) -> &mut Self {
         match self.next_tx() {
             Some(idx) => {
                 self.sram.tx_buffers[idx].assign(&message);
