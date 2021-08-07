@@ -1,4 +1,4 @@
-use crate::comms::fdcan::{ExtendedFdcanFrame, FdcanMessage};
+use crate::comms::fdcan::FdcanMessage;
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
 };
@@ -965,31 +965,7 @@ impl<D> Controller<Ready<D>>
 where
     D: DrvState,
 {
-    pub fn run(&mut self, mut fdcan_handler: impl FnMut(u32, [u32; 16]) -> ()) -> ! {
-        loop {
-            // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
-            // the only other interrupt that shares this particular buffer - ensuring we aren't
-            // preempted when reading from it. This is fine in general since the peripheral itself
-            // has an internal buffer, and as long as we can clear the backlog before the peripheral
-            // receives 4 requests we should be good. Alternatively, we could just process a single
-            // message here to make sure that we only hold this lock for the absolute minimum time,
-            // since there's an internal buffer in the FDCAN. Bad form though...
-            crate::util::interrupts::free_from(
-                device::interrupt::FDCAN1_INTR1_IT,
-                &FDCAN_RECEIVE_BUF,
-                |mut buf| {
-                    while let Some(message) = buf.dequeue_ref() {
-                        fdcan_handler(message.id, message.data);
-                    }
-                },
-            );
-        }
-    }
-
-    pub fn run2(
-        &mut self,
-        mut fdcan_handler: impl FnMut(&FdcanMessage) -> Option<FdcanMessage>,
-    ) -> ! {
+    pub fn run(self, mut fdcan_handler: impl FnMut(&FdcanMessage) -> Option<FdcanMessage>) -> ! {
         loop {
             // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
             // the only other interrupt that shares this particular buffer - ensuring we aren't

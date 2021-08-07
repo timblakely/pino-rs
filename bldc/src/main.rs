@@ -1,11 +1,7 @@
 #![no_std]
 #![no_main]
 
-use bldc::comms::fdcan::ExtendedFdcanFrame;
-use bldc::{
-    comms::messages::{Debug, Debug2},
-    driver,
-};
+use bldc::{comms::messages::Messages, driver};
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
@@ -18,18 +14,11 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let mut controller = driver::take_hardware().configure_peripherals();
+    let controller = driver::take_hardware().configure_peripherals();
 
-    // controller.run(|id, buffer| match id {
-    //     _ => (),
-    // });
-
-    controller.run2(|message| {
-        let comms_message = match message.id {
-            0xA => Some(Debug::unpack(message)),
-            _ => None,
-        };
-        None
+    controller.run(|message| match Messages::unpack_fdcan(message) {
+        Some(Messages::Debug(_x)) => None,
+        _ => None,
     });
 }
 

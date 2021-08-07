@@ -1,4 +1,4 @@
-use super::{ExtendedFdcanFrame, FdcanMessage};
+use super::FdcanMessage;
 
 mod t0 {
     pub type ReadProxy = bitfield::ReadProxy<u32, T0>;

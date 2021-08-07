@@ -248,15 +248,6 @@ impl Fdcan<Init> {
     }
 }
 
-pub trait ExtendedFdcanFrame {
-    // Unpack the message from a buffer.
-    fn unpack(message: &FdcanMessage) -> Self;
-
-    // Pack the message into a buffer of up to 64 bytes, returning the number of bytes that were
-    // packed.
-    fn pack(&self, buffer: &mut [u32; 16]) -> FdcanMessage;
-}
-
 impl Fdcan<Running> {
     pub fn send_message(&mut self, message: FdcanMessage) -> &mut Self {
         match self.next_tx() {
