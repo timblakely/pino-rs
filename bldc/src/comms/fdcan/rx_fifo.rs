@@ -70,4 +70,21 @@ impl RxFifo {
             _ => r0.extended_id().bits(),
         }
     }
+    pub fn len(&self) -> u8 {
+        let len = self.r1.read().data_length().bits();
+        match self.r0.read().extended().bits() {
+            // Standard range is 0-8 if DLC is <= 8, otherwise it's always 8
+            0 => len.min(8),
+            _ => match len {
+                x if x <= 8 => 8,
+                x if x == 9 => 12,
+                x if x == 10 => 16,
+                x if x == 11 => 20,
+                x if x == 12 => 24,
+                x if x == 13 => 32,
+                x if x == 14 => 48,
+                _ => 64,
+            },
+        }
+    }
 }

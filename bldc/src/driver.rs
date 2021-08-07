@@ -1,4 +1,4 @@
-use crate::comms::fdcan::ExtendedFdcanFrame;
+use crate::comms::fdcan::{ExtendedFdcanFrame, FdcanMessage};
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
 };
@@ -986,7 +986,10 @@ where
         }
     }
 
-    pub fn run2(&mut self, mut fdcan_handler: impl FnMut(u32, [u32; 16]) -> ()) -> ! {
+    pub fn run2(
+        &mut self,
+        mut fdcan_handler: impl FnMut(&FdcanMessage) -> Option<FdcanMessage>,
+    ) -> ! {
         loop {
             // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
             // the only other interrupt that shares this particular buffer - ensuring we aren't
@@ -1000,7 +1003,7 @@ where
                 &FDCAN_RECEIVE_BUF,
                 |mut buf| {
                     while let Some(message) = buf.dequeue_ref() {
-                        fdcan_handler(message.id, message.data);
+                        fdcan_handler(&message);
                     }
                 },
             );

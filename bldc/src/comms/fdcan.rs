@@ -248,46 +248,17 @@ impl Fdcan<Init> {
     }
 }
 
-pub trait StandardFdcanFrame {
-    // Unique ID for the frame
-    fn id(&self) -> u16;
-
-    // Unpack the message from a buffer.
-    fn unpack(buffer: &[u32; 2]) -> Self;
-
-    // Pack the message into a buffer of up to 8 bytes, returning the number of bytes that were
-    // packed.
-    fn pack(&self, buffer: &mut [u32; 2]) -> u8;
-}
-
 pub trait ExtendedFdcanFrame {
-    // Unique ID for the frame
-    fn id(&self) -> u32;
-
     // Unpack the message from a buffer.
-    fn unpack(buffer: &[u32; 16]) -> Self;
+    fn unpack(message: &FdcanMessage) -> Self;
 
     // Pack the message into a buffer of up to 64 bytes, returning the number of bytes that were
     // packed.
-    fn pack(&self, buffer: &mut [u32; 16]) -> u8;
-}
-
-pub trait FdcanMessageTranslator {
-    // Unique ID for the frame
-    fn id(&self) -> u32;
-
-    // Unpack the message from a buffer.
-    fn unpack(message: &ReceivedMessage) -> Option<Self>
-    where
-        Self: Sized;
-
-    // Pack the message into a buffer of up to 64 bytes, returning the number of bytes that were
-    // packed.
-    fn pack(&self, buffer: &mut [u32; 16]) -> u8;
+    fn pack(&self, buffer: &mut [u32; 16]) -> FdcanMessage;
 }
 
 impl Fdcan<Running> {
-    pub fn send_message(&mut self, message: impl ExtendedFdcanFrame) -> &mut Self {
+    pub fn send_message(&mut self, message: FdcanMessage) -> &mut Self {
         match self.next_tx() {
             Some(idx) => {
                 self.sram.tx_buffers[idx].assign(&message);
@@ -345,9 +316,10 @@ pub fn fdcan1_rx_isr() {
             .as_mut()
             .expect("FDCAN RX ISR handled prior to populating buffer");
         let rx_buffer = &shared.sram.rx_fifo0[get_idx as usize];
-        (*receive_buf).push(ReceivedMessage {
+        (*receive_buf).push(FdcanMessage {
             id: rx_buffer.id(),
             data: *rx_buffer.data(),
+            size: rx_buffer.len(),
         });
     }
     // Acknowledge the peripheral that we've read the message.
@@ -362,12 +334,28 @@ pub fn fdcan1_rx_isr() {
 }
 
 #[derive(Debug)]
-pub struct ReceivedMessage {
+pub struct FdcanMessage {
     pub id: u32,
     pub data: [u32; 16],
+    pub size: u8,
 }
 
-type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<ReceivedMessage, 16>;
+impl FdcanMessage {
+    pub fn new<const T: usize>(id: u32, data: [u32; T]) -> FdcanMessage {
+        // There's no real idiomatic way to zero-initialize-and-fill-in-up-to-length in Rust as of
+        // Aug '21.
+        let mut message = FdcanMessage {
+            id,
+            data: [0; 16],
+            size: T as u8,
+        };
+        let len = T.min(16);
+        message.data[..len].copy_from_slice(&data[..len]);
+        message
+    }
+}
+
+type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<FdcanMessage, 16>;
 pub static FDCAN_RECEIVE_BUF: SpinLock<Option<&'static mut ReceiveBuffer>> = SpinLock::new(None);
 
 pub static FDCANSHARE: SpinLock<Option<FdcanShared>> = SpinLock::new(None);

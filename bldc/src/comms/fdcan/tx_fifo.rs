@@ -1,4 +1,4 @@
-use super::ExtendedFdcanFrame;
+use super::{ExtendedFdcanFrame, FdcanMessage};
 
 mod t0 {
     pub type ReadProxy = bitfield::ReadProxy<u32, T0>;
@@ -84,12 +84,7 @@ impl TxFifo {
         &mut self.data
     }
 
-    // pub fn assign(&mut self, frame: &dyn ExtendedFdcanFrame) {
-    pub fn assign<T>(&mut self, frame: &T)
-    where
-        T: ExtendedFdcanFrame,
-    {
-        let id = frame.id();
+    pub fn assign(&mut self, frame: &FdcanMessage) {
         self.t0.update(|_, w| {
             w.error_state()
                 .clear_bit()
@@ -98,9 +93,10 @@ impl TxFifo {
                 .remote_transmission()
                 .clear_bit()
                 .extended_id()
-                .set(id)
+                .set(frame.id)
         });
-        let frame_size_bytes = match frame.pack(&mut self.data) {
+        self.data.copy_from_slice(&frame.data);
+        let frame_size_bytes = match frame.size {
             x if x <= 8 => x,
             x if x <= 12 => 9,
             x if x <= 16 => 10,
@@ -112,6 +108,7 @@ impl TxFifo {
         };
         self.t1.update(|_, w| {
             w.message_marker()
+                // TODO(blakely): Un-hard-code this if we need message marking.
                 .set(123)
                 .store_fifo()
                 .set_bit()
