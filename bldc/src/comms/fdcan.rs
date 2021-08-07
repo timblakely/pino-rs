@@ -253,9 +253,7 @@ pub trait StandardFdcanFrame {
     fn id(&self) -> u16;
 
     // Unpack the message from a buffer.
-    fn unpack(buffer: &[u32; 2]) -> Self
-    where
-        Self: Sized;
+    fn unpack(buffer: &[u32; 2]) -> Self;
 
     // Pack the message into a buffer of up to 8 bytes, returning the number of bytes that were
     // packed.
@@ -267,7 +265,19 @@ pub trait ExtendedFdcanFrame {
     fn id(&self) -> u32;
 
     // Unpack the message from a buffer.
-    fn unpack(buffer: &[u32; 16]) -> Self
+    fn unpack(buffer: &[u32; 16]) -> Self;
+
+    // Pack the message into a buffer of up to 64 bytes, returning the number of bytes that were
+    // packed.
+    fn pack(&self, buffer: &mut [u32; 16]) -> u8;
+}
+
+pub trait FdcanMessageTranslator {
+    // Unique ID for the frame
+    fn id(&self) -> u32;
+
+    // Unpack the message from a buffer.
+    fn unpack(message: &ReceivedMessage) -> Option<Self>
     where
         Self: Sized;
 

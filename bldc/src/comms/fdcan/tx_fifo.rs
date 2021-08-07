@@ -100,7 +100,7 @@ impl TxFifo {
                 .extended_id()
                 .set(id)
         });
-        let frame_size_bits = match frame.pack(&mut self.data) {
+        let frame_size_bytes = match frame.pack(&mut self.data) {
             x if x <= 8 => x,
             x if x <= 12 => 9,
             x if x <= 16 => 10,
@@ -120,7 +120,7 @@ impl TxFifo {
                 .bit_rate_switch()
                 .set_bit()
                 .data_length()
-                .set(frame_size_bits)
+                .set(frame_size_bytes)
         });
     }
 }

@@ -14,9 +14,11 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let controller = driver::take_hardware().configure_peripherals();
+    let mut controller = driver::take_hardware().configure_peripherals();
 
-    controller.run(|message| {})
+    controller.run(|id, buffer| match id {
+        _ => (),
+    });
 }
 
 #[interrupt]
