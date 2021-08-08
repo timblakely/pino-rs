@@ -1,7 +1,13 @@
 #![no_std]
 #![no_main]
 
-use bldc::{comms::messages::Messages, driver};
+use bldc::{
+    comms::{
+        fdcan::FdcanMessage,
+        messages::{Debug, Messages},
+    },
+    driver,
+};
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
@@ -10,6 +16,12 @@ use panic_halt as _;
 #[cfg(feature = "panic-itm")]
 use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 
+fn test(debug: Debug) -> Option<FdcanMessage> {
+    let mut a = debug.foo;
+    a += 1;
+    None
+}
+
 // TODO(blakely): Comment on all the stuff that happens before we actually get
 // here...
 #[cortex_m_rt::entry]
@@ -17,7 +29,7 @@ fn main() -> ! {
     let controller = driver::take_hardware().configure_peripherals();
 
     controller.run(|message| match Messages::unpack_fdcan(message) {
-        Some(Messages::Debug(_x)) => None,
+        Some(Messages::Debug(x)) => test(x),
         _ => None,
     });
 }

@@ -965,7 +965,7 @@ impl<D> Controller<Ready<D>>
 where
     D: DrvState,
 {
-    pub fn run(self, mut fdcan_handler: impl FnMut(&FdcanMessage) -> Option<FdcanMessage>) -> ! {
+    pub fn run(self, mut comms_handler: impl FnMut(&FdcanMessage) -> Option<FdcanMessage>) -> ! {
         loop {
             // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
             // the only other interrupt that shares this particular buffer - ensuring we aren't
@@ -979,7 +979,7 @@ where
                 &FDCAN_RECEIVE_BUF,
                 |mut buf| {
                     while let Some(message) = buf.dequeue_ref() {
-                        fdcan_handler(&message);
+                        comms_handler(&message);
                     }
                 },
             );

@@ -32,12 +32,12 @@ impl ExtendedFdcanFrame for Debug {
         let buffer = message.data;
         Debug {
             foo: buffer[0],
-            bar: f32::from_bits(buffer[0]),
-            baz: (buffer[2] >> 24) as u8,
+            bar: f32::from_bits(buffer[1]),
+            baz: (buffer[2] & 0xFF) as u8,
             toot: [
-                ((buffer[2] & (0xFF << 16)) >> 16) as u8,
                 ((buffer[2] & (0xFF << 8)) >> 8) as u8,
-                (buffer[2] & 0xFF) as u8,
+                ((buffer[2] & (0xFF << 16)) >> 16) as u8,
+                (buffer[2] >> 24) as u8,
             ],
         }
     }

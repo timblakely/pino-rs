@@ -96,7 +96,7 @@ impl TxFifo {
                 .set(frame.id)
         });
         self.data.copy_from_slice(&frame.data);
-        let frame_size_bytes = match frame.size {
+        let frame_size_bytes = match frame.size * 4 {
             x if x <= 8 => x,
             x if x <= 12 => 9,
             x if x <= 16 => 10,
