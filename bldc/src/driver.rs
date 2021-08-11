@@ -969,7 +969,7 @@ impl Controller<Init> {
 // trait SendSyncFn: Fn() + Send + Sync {}
 // impl<T: Fn() + Send + Sync> SendSyncFn for T {}
 
-static COMMUTATION_CB: third_party::m4vga_rs::util::iref::IRef<ControlLoop> =
+static COMMUTATION_CB: third_party::m4vga_rs::util::iref::IRef<(ControlLoop,)> =
     third_party::m4vga_rs::util::iref::IRef::new();
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
@@ -981,7 +981,7 @@ where
         self,
         initial_state: S,
         mut comms_handler: impl FnMut(&FdcanMessage, &mut S),
-        mut commutation_impl: impl FnMut(&mut ControlLoop) + Send,
+        mut commutation_impl: impl for<'a> FnMut(ControlLoop) + Send,
     ) {
         // Since the interrupt handler can interrupt the main thread's modifications of any shared
         // state, we use a double-buffer and atomic swap to ensure a full update.
@@ -989,7 +989,7 @@ where
         // Split the two states into a read-only control state that has read priority, and a mutable
         // state used for communication that writes the unused state and atomically swaps on
         // completion.
-        let (control_state, mut comms_state) = shared_state.split();
+        let (_control_state, mut comms_state) = shared_state.split();
 
         static BOARD: SpinLock<Option<Board>> = SpinLock::new(None);
         *BOARD.try_lock().unwrap() = Some(Board {
@@ -1040,7 +1040,7 @@ fn ADC1_2() {
     unsafe {
         *(0x5000_0000 as *mut u32) = 1 << 3;
     }
-    COMMUTATION_CB.observe(|r| r(&mut ControlLoop { asdf: 123 }));
+    COMMUTATION_CB.observe(|r| r(ControlLoop { asdf: 123 }));
     clear_pending_irq(device::Interrupt::ADC1_2);
 }
 

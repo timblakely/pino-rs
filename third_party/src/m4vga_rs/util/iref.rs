@@ -65,7 +65,7 @@ impl<T> IRef<T> {
     /// or from multiple threads simultaneously.
     pub fn donate<'env, F, R>(&self, val: &'env mut F, scope: impl FnOnce() -> R) -> R
     where
-        F: FnMut(&mut T),
+        F: FnMut<T, Output=()>,
         F: Send + 'env,
     {
         let r = self
@@ -75,7 +75,7 @@ impl<T> IRef<T> {
 
         // Construct a FnMut fat pointer to our closure, and then erase its
         // type.
-        let val: &mut (dyn FnMut(_) + Send + 'env) = val;
+        let val: &mut (dyn FnMut<T, Output=()> + Send + 'env) = val;
         // Safety: we only reinterpret these bits as the same type used above
         // but with *narrower* lifetime.
         let val: (usize, usize) = unsafe { core::mem::transmute(val) };
@@ -123,7 +123,7 @@ impl<T> IRef<T> {
     pub fn observe<R, F>(&self, body: F) -> Option<R>
     where
         F: FnOnce(
-            &mut (dyn FnMut(&mut T) + Send),
+            &mut (dyn FnMut<T, Output=()> + Send),
         ) -> R,
     {
         self.state
@@ -144,7 +144,7 @@ impl<T> IRef<T> {
                     let r = self.contents.get();
                     // We do *not* know the correct lifetime for the &mut.  This
                     // is why the `body` closure is (implicitly) `for<'a>`.
-                    let r: &mut (dyn FnMut(&mut _)
+                    let r: &mut (dyn FnMut<T, Output=()>
                                  + Send) =
                         // Safety: we put it in there, we have used locking to
                         // ensure that our reference will be unique, and the

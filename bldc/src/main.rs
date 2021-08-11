@@ -1,13 +1,10 @@
 #![no_std]
 #![no_main]
+#![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::{
-        fdcan::FdcanMessage,
-        messages::{Debug, Messages},
-    },
+    comms::messages::{Debug, Messages},
     driver,
-    util::buffered_state::BufferedState,
 };
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
@@ -43,9 +40,9 @@ fn main() -> ! {
                 _ => {}
             };
         },
-        |board| {
-            let mut asdf = 0;
-            asdf += 1;
+        |_board| {
+            let mut _asdf = 0;
+            _asdf += 1;
         },
     );
     loop {}
