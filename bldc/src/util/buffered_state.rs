@@ -64,23 +64,6 @@ pub struct StateWriter<'a, T: Copy> {
 }
 
 impl<'a, T: Copy> StateWriter<'a, T> {
-    // pub fn commit(&mut self, new_value: &T) {
-    //     // Safety: enforced to be non-null by NonNull
-    //     let state = unsafe { self.state.as_mut() };
-
-    //     // Identify which buffer is safe for writing to.
-    //     let target_idx = match state.buffer.load(Ordering::Acquire) {
-    //         0 => 1,
-    //         _ => 0,
-    //     };
-    //     // Write to the currently unused buffer.
-    //     state.value[target_idx] = *new_value;
-    //     // This is the atomic instruction that, when successful, swaps the buffer pointer.
-    //     // Even if this thread is preempted between the above and below instructions, the
-    //     // reader will only get a slightly outdated copy of the protected data.
-    //     state.buffer.store(target_idx, Ordering::Release);
-    // }
-
     pub fn update(&mut self) -> StateGuard<'a, T> {
         // Safety: enforced to be non-null by NonNull
         let state = unsafe { self.state.as_mut() };
