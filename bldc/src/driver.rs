@@ -1,4 +1,6 @@
 use crate::comms::fdcan::FdcanMessage;
+use crate::commutation::Board;
+use crate::util::buffered_state::BufferedState;
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
 };
@@ -12,12 +14,14 @@ use crate::{
     ic::ma702::{self, Ma702, Streaming},
 };
 use core::cell::RefCell;
+use core::convert::TryInto;
 use cortex_m::peripheral as cm;
 use drv8323rs::{Drv8323rs, DrvState};
 use fixed::types::I1F31;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
+use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 pub struct Controller<S> {
     pub mode_state: S,
@@ -47,8 +51,10 @@ pub struct Init {
 
 pub struct Ready<D: DrvState> {
     pub ma702: Ma702<Streaming>,
+    // TODO(blakely): Make this a `dyn Drv8323`, removing the need to pass around the generic.
     pub drv: Drv8323rs<D>,
     pub gpioa: device::GPIOA,
+    pub tim1: device::TIM1,
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -954,18 +960,37 @@ impl Controller<Init> {
                 ma702,
                 drv,
                 gpioa: self.mode_state.gpioa,
+                tim1: self.mode_state.tim1,
             },
         };
         new_self
     }
 }
 
-// impl Controller<Ready<drv8323rs::Enabled>> {
+// TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl<D> Controller<Ready<D>>
 where
     D: DrvState,
 {
-    pub fn run(self, mut comms_handler: impl FnMut(&FdcanMessage) -> Option<FdcanMessage>) -> ! {
+    pub fn run<S: Copy>(
+        self,
+        initial_state: S,
+        mut comms_handler: impl FnMut(&FdcanMessage, &mut S),
+        mut commutation_impl: impl FnMut(Board),
+    ) -> ! {
+        // Since the interrupt handler can interrupt the main thread's modifications of any shared
+        // state, we use a double-buffer and atomic swap to ensure a full update.
+        let mut shared_state = BufferedState::<S>::new(initial_state);
+        // Split the two states into a read-only control state that has read priority, and a mutable
+        // state used for communication that writes the unused state and atomically swaps on
+        // completion.
+        let (control_state, mut comms_state) = shared_state.split();
+
+        static BOARD: SpinLock<Option<Board>> = SpinLock::new(None);
+        *BOARD.try_lock().unwrap() = Some(Board {
+            tim1: self.mode_state.tim1,
+        });
+
         loop {
             // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
             // the only other interrupt that shares this particular buffer - ensuring we aren't
@@ -979,7 +1004,7 @@ where
                 &FDCAN_RECEIVE_BUF,
                 |mut buf| {
                     while let Some(message) = buf.dequeue_ref() {
-                        comms_handler(&message);
+                        comms_handler(&message, &mut comms_state.update());
                     }
                 },
             );

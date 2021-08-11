@@ -23,29 +23,28 @@ struct PwmState {
     pwm_duty: f32,
 }
 
-fn test(debug: Debug, state: &mut PwmState) -> Option<FdcanMessage> {
+fn test(debug: Debug, state: &mut PwmState) {
     state.pwm_duty = debug.bar;
-    None
 }
 
 // TODO(blakely): Comment on all the stuff that happens before we actually get
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    let mut shared_state = BufferedState::<PwmState>::new(PwmState { pwm_duty: 0f32 });
-    let (control, mut command) = shared_state.split();
+    let initial_state = PwmState { pwm_duty: 0f32 };
 
     let controller = driver::take_hardware().configure_peripherals();
 
-    controller.run(|message| {
-        let old_state = control.read();
-        match Messages::unpack_fdcan(message) {
-            Some(Messages::Debug(x)) => test(x, &mut command.update()),
-            _ => None,
-        };
-        let new_state = control.read();
-        None
-    });
+    controller.run(
+        initial_state,
+        |message, state| {
+            match Messages::unpack_fdcan(message) {
+                Some(Messages::Debug(x)) => test(x, state),
+                _ => {}
+            };
+        },
+        |board| {},
+    );
 }
 
 #[interrupt]
