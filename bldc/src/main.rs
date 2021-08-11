@@ -43,8 +43,12 @@ fn main() -> ! {
                 _ => {}
             };
         },
-        |board| {},
+        |board| {
+            let mut asdf = 0;
+            asdf += 1;
+        },
     );
+    loop {}
 }
 
 #[interrupt]
@@ -57,29 +61,4 @@ fn FDCAN1_INTR0_IT() {
 fn FDCAN1_INTR1_IT() {
     bldc::comms::fdcan::fdcan1_rx_isr();
     clear_pending_irq(device::Interrupt::FDCAN1_INTR1_IT);
-}
-
-#[interrupt]
-fn ADC1_2() {
-    // Main control loop.
-    unsafe {
-        *(0x4800_0418 as *mut u32) = 1 << 9;
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
-    }
-    // HACK HACK HACK: Clear EOS for ADC 1
-    unsafe {
-        *(0x5000_0000 as *mut u32) = 1 << 3;
-    }
-    // TODO(blakely): actually do any semblance of control :P
-    clear_pending_irq(device::Interrupt::ADC1_2);
 }

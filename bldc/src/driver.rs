@@ -1,5 +1,5 @@
 use crate::comms::fdcan::FdcanMessage;
-use crate::commutation::Board;
+use crate::commutation::{Board, ControlLoop};
 use crate::util::buffered_state::BufferedState;
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
@@ -14,13 +14,12 @@ use crate::{
     ic::ma702::{self, Ma702, Streaming},
 };
 use core::cell::RefCell;
-use core::convert::TryInto;
 use cortex_m::peripheral as cm;
 use drv8323rs::{Drv8323rs, DrvState};
 use fixed::types::I1F31;
 use ringbuffer::RingBufferRead;
-use stm32g4::stm32g474 as device;
-use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
+use stm32g4::stm32g474::{self as device, interrupt};
+use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, disable_irq, enable_irq};
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 pub struct Controller<S> {
@@ -967,6 +966,12 @@ impl Controller<Init> {
     }
 }
 
+// trait SendSyncFn: Fn() + Send + Sync {}
+// impl<T: Fn() + Send + Sync> SendSyncFn for T {}
+
+static COMMUTATION_CB: third_party::m4vga_rs::util::iref::IRef<ControlLoop> =
+    third_party::m4vga_rs::util::iref::IRef::new();
+
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl<D> Controller<Ready<D>>
 where
@@ -976,8 +981,8 @@ where
         self,
         initial_state: S,
         mut comms_handler: impl FnMut(&FdcanMessage, &mut S),
-        mut commutation_impl: impl FnMut(Board),
-    ) -> ! {
+        mut commutation_impl: impl FnMut(&mut ControlLoop) + Send,
+    ) {
         // Since the interrupt handler can interrupt the main thread's modifications of any shared
         // state, we use a double-buffer and atomic swap to ensure a full update.
         let mut shared_state = BufferedState::<S>::new(initial_state);
@@ -991,25 +996,52 @@ where
             tim1: self.mode_state.tim1,
         });
 
-        loop {
-            // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
-            // the only other interrupt that shares this particular buffer - ensuring we aren't
-            // preempted when reading from it. This is fine in general since the peripheral itself
-            // has an internal buffer, and as long as we can clear the backlog before the peripheral
-            // receives 4 requests we should be good. Alternatively, we could just process a single
-            // message here to make sure that we only hold this lock for the absolute minimum time,
-            // since there's an internal buffer in the FDCAN. Bad form though...
-            crate::util::interrupts::free_from(
-                device::interrupt::FDCAN1_INTR1_IT,
-                &FDCAN_RECEIVE_BUF,
-                |mut buf| {
-                    while let Some(message) = buf.dequeue_ref() {
-                        comms_handler(&message, &mut comms_state.update());
-                    }
-                },
-            );
-        }
+        COMMUTATION_CB.donate(&mut commutation_impl, || {
+            loop {
+                // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
+                // the only other interrupt that shares this particular buffer - ensuring we aren't
+                // preempted when reading from it. This is fine in general since the peripheral itself
+                // has an internal buffer, and as long as we can clear the backlog before the peripheral
+                // receives 4 requests we should be good. Alternatively, we could just process a single
+                // message here to make sure that we only hold this lock for the absolute minimum time,
+                // since there's an internal buffer in the FDCAN. Bad form though...
+                crate::util::interrupts::free_from(
+                    device::interrupt::FDCAN1_INTR1_IT,
+                    &FDCAN_RECEIVE_BUF,
+                    |mut buf| {
+                        while let Some(message) = buf.dequeue_ref() {
+                            comms_handler(&message, &mut comms_state.update());
+                        }
+                    },
+                );
+            }
+        });
     }
+}
+
+#[interrupt]
+fn ADC1_2() {
+    // Main control loop.
+    unsafe {
+        *(0x4800_0418 as *mut u32) = 1 << 9;
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
+    }
+    // HACK HACK HACK: Clear EOS for ADC 1
+    unsafe {
+        *(0x5000_0000 as *mut u32) = 1 << 3;
+    }
+    COMMUTATION_CB.observe(|r| r(&mut ControlLoop { asdf: 123 }));
+    clear_pending_irq(device::Interrupt::ADC1_2);
 }
 
 pub struct FdcanShared {
