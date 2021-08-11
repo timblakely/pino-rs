@@ -7,6 +7,7 @@ use bldc::{
         messages::{Debug, Messages},
     },
     driver,
+    util::buffered_state::BufferedState,
 };
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
@@ -16,9 +17,14 @@ use panic_halt as _;
 #[cfg(feature = "panic-itm")]
 use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 
-fn test(debug: Debug) -> Option<FdcanMessage> {
-    let mut a = debug.foo;
-    a += 1;
+// TODO(blakely): Move somewhere sane
+#[derive(Clone, Copy)]
+struct PwmState {
+    pwm_duty: f32,
+}
+
+fn test(debug: Debug, state: &mut PwmState) -> Option<FdcanMessage> {
+    state.pwm_duty = debug.bar;
     None
 }
 
@@ -26,11 +32,19 @@ fn test(debug: Debug) -> Option<FdcanMessage> {
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    let mut shared_state = BufferedState::<PwmState>::new(PwmState { pwm_duty: 0f32 });
+    let (control, mut command) = shared_state.split();
+
     let controller = driver::take_hardware().configure_peripherals();
 
-    controller.run(|message| match Messages::unpack_fdcan(message) {
-        Some(Messages::Debug(x)) => test(x),
-        _ => None,
+    controller.run(|message| {
+        let old_state = control.read();
+        match Messages::unpack_fdcan(message) {
+            Some(Messages::Debug(x)) => test(x, &mut command.update()),
+            _ => None,
+        };
+        let new_state = control.read();
+        None
     });
 }
 
