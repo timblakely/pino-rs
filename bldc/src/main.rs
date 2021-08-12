@@ -9,6 +9,7 @@ use panic_halt as _;
 #[cfg(feature = "panic-itm")]
 use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 
+// TODO(blakely): Implement emergency stop.
 fn emergency_stop() {}
 
 // TODO(blakely): Comment on all the stuff that happens before we actually get
@@ -37,8 +38,12 @@ fn main() -> ! {
             };
         },
         // Control loop
-        |_control_params| {
+        |hardware, control_params| {
             // This is called at 40kHz, and where any commutation happens.
+            let new_arr: u16 = ((control_params.pwm_duty * 2125_f32) as u16).min(80).max(0);
+            if new_arr <= 80 && new_arr >= 0 {
+                hardware.tim1.ccr1.write(|w| w.ccr1().bits(new_arr));
+            }
         },
     );
     loop {}

@@ -48,7 +48,7 @@ pub struct StateReader<'a, T: Copy> {
 }
 
 impl<'a, T: Copy> StateReader<'a, T> {
-    pub fn read<'t>(&'t self) -> &'t T {
+    pub fn read(&self) -> &T {
         // Safety: enforced to be non-null by NonNull
         let state = unsafe { self.state.as_ref() };
         match state.current.load(Ordering::Acquire) {

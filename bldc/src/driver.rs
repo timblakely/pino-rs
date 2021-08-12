@@ -1,5 +1,5 @@
 use crate::comms::fdcan::FdcanMessage;
-use crate::commutation::{Board, ControlParameters};
+use crate::commutation::{ControlParameters, Hardware};
 use crate::util::buffered_state::{BufferedState, StateReader};
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
@@ -959,10 +959,11 @@ impl Controller<Init> {
     }
 }
 
-static CONTROL: third_party::m4vga_rs::util::iref::IRef<(&ControlParameters,)> =
+static CONTROL: third_party::m4vga_rs::util::iref::IRef<(&mut Hardware, &ControlParameters)> =
     third_party::m4vga_rs::util::iref::IRef::new();
-static CONTROL_PARAMS: SpinLock<Option<StateReader<ControlParameters>>> = SpinLock::new(None);
-static SHARED_STATE: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
+static COMMUTATION_SHARED: SpinLock<Option<(Hardware, StateReader<ControlParameters>)>> =
+    SpinLock::new(None);
+static COMMS_SHARED: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl<D> Controller<Ready<D>>
@@ -973,29 +974,47 @@ where
         self,
         initial_state: ControlParameters,
         mut comms_handler: impl FnMut(&FdcanMessage, &mut ControlParameters),
-        mut commutation_impl: impl FnMut(&ControlParameters) + Send,
+        mut commutation_impl: impl FnMut(&mut Hardware, &ControlParameters) + Send,
     ) {
         // Since the interrupt handler can interrupt the main thread's modifications of any shared
         // state, we use a double-buffer and atomic swap to ensure a full update.
-        *SHARED_STATE.try_lock().unwrap() =
+        *COMMS_SHARED.try_lock().unwrap() =
             Some(BufferedState::<ControlParameters>::new(initial_state));
         // Split the two states into a read-only control state that has read priority, and a mutable
         // state used for communication that writes the unused state and atomically swaps on
         // completion.
         let mut shared_state = SpinLockGuard::map(
-            SHARED_STATE.try_lock().expect("Shared state lock held"),
+            COMMS_SHARED.try_lock().expect("Shared state lock held"),
             |o| o.as_mut().expect("Shared state not initialized"),
         );
-        let (control_state, mut comms_state) = shared_state.split();
-        *CONTROL_PARAMS.lock() = Some(control_state);
+        let (control_params, mut comms_params) = shared_state.split();
 
-        // Kick off tim1.
-        self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
-        // Now that the timer has started, enable the main output to allow current on the pins. If
-        // we do this before we enable the time, we have the potential to get into a state where the
-        // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-        // current through the high phase to any low phases.
-        self.mode_state.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+        // Pass off both the control parameters and hardware to the commutation interrupt handler.
+        {
+            let mut shared = COMMUTATION_SHARED.lock();
+            *shared = Some((
+                Hardware {
+                    tim1: self.mode_state.tim1,
+                },
+                control_params,
+            ));
+        }
+        // We don't want the timer to fire while we've got this lock, so disable the interrupt while
+        // we're starting it up.
+        crate::util::interrupts::free_from(
+            device::interrupt::ADC1_2,
+            &COMMUTATION_SHARED,
+            |shared| {
+                let (hardware, _) = &*shared;
+                // Kick off tim1.
+                hardware.tim1.cr1.modify(|_, w| w.cen().set_bit());
+                // Now that the timer has started, enable the main output to allow current on the pins. If
+                // we do this before we enable the time, we have the potential to get into a state where the
+                // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+                // current through the high phase to any low phases.
+                hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+            },
+        );
 
         // This is where the fun starts. We've got the commutation function here in the main loop,
         // but we've got to send it to the interrupt handler. Callbacks are fat pointers, and so far
@@ -1019,7 +1038,7 @@ where
                     &FDCAN_RECEIVE_BUF,
                     |mut buf| {
                         while let Some(message) = buf.dequeue_ref() {
-                            comms_handler(&message, &mut comms_state.update());
+                            comms_handler(&message, &mut comms_params.update());
                         }
                     },
                 );
@@ -1049,15 +1068,11 @@ fn ADC1_2() {
     unsafe {
         *(0x5000_0000 as *mut u32) = 1 << 3;
     }
-    // let control_parameters = match *CONTROL_PARAMS.try_lock().as_mut().expect("adc interrupt") {
-    //     Some(x) => x,
-    //     None => panic!("params weren't set"),
-    // };
-    let control_parameters = SpinLockGuard::map(
-        CONTROL_PARAMS.try_lock().expect("adc interrupt lock"),
+    let (hardware, control_parameters) = &mut *SpinLockGuard::map(
+        COMMUTATION_SHARED.try_lock().expect("adc interrupt lock"),
         |o| o.as_mut().expect("Control params not set"),
     );
-    CONTROL.observe(|r| r(control_parameters.read()));
+    CONTROL.observe(|r| r(hardware, control_parameters.read()));
     clear_pending_irq(device::Interrupt::ADC1_2);
 }
 
