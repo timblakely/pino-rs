@@ -1,8 +1,10 @@
+use crate::ic::ma702::{Ma702, Streaming};
 use stm32g4::stm32g474 as device;
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct Hardware {
     pub tim1: device::TIM1,
+    pub ma702: Ma702<Streaming>,
 }
 
 #[derive(Clone, Copy)]

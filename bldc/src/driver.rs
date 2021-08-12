@@ -995,6 +995,7 @@ where
             *shared = Some((
                 Hardware {
                     tim1: self.mode_state.tim1,
+                    ma702: self.mode_state.ma702,
                 },
                 control_params,
             ));
