@@ -7,7 +7,8 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
-use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A};
+use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
+use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
 pub mod extended_filter;
@@ -280,7 +281,7 @@ impl Fdcan<Running> {
     }
 }
 
-pub fn fdcan1_tx_isr() {
+fn fdcan1_tx_isr() {
     let fdcan = &sync::acquire_hw(&FDCANSHARE).fdcan;
     let get_idx = fdcan.txefs.read().efgi().bits();
     // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
@@ -292,7 +293,7 @@ pub fn fdcan1_tx_isr() {
     fdcan.ir.modify(|_, w| w.tfe().set_bit().tefn().set_bit());
 }
 
-pub fn fdcan1_rx_isr() {
+fn fdcan1_rx_isr() {
     let shared = &sync::acquire_hw(&FDCANSHARE);
 
     // Figure out get index
@@ -370,4 +371,16 @@ fn init_buffer() -> &'static mut ReceiveBuffer {
 
 pub fn init_receive_buf() {
     *FDCAN_RECEIVE_BUF.try_lock().unwrap() = Some(init_buffer());
+}
+
+#[interrupt]
+fn FDCAN1_INTR0_IT() {
+    fdcan1_tx_isr();
+    clear_pending_irq(device::Interrupt::FDCAN1_INTR0_IT);
+}
+
+#[interrupt]
+fn FDCAN1_INTR1_IT() {
+    fdcan1_rx_isr();
+    clear_pending_irq(device::Interrupt::FDCAN1_INTR1_IT);
 }

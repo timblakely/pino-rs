@@ -12,21 +12,23 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-pub struct BufferedState<T: Sized + Copy> {
+pub struct BufferedState<'a, T: Sized + Copy> {
     current: AtomicUsize,
     value: [T; 2],
+    _life: PhantomData<&'a ()>,
 }
 
-impl<T: Sized + Copy> BufferedState<T> {
+impl<'a, T: Sized + Copy> BufferedState<'a, T> {
     // Creates a BufferedState
     pub fn new(initial_state: T) -> Self {
         BufferedState {
             current: AtomicUsize::new(0),
             value: [initial_state.clone(), initial_state.clone()],
+            _life: PhantomData,
         }
     }
 
-    pub fn split(&mut self) -> (StateReader<T>, StateWriter<T>) {
+    pub fn split(&mut self) -> (StateReader<'a, T>, StateWriter<'a, T>) {
         (
             StateReader {
                 state: unsafe { NonNull::new_unchecked(self) },
@@ -41,7 +43,7 @@ impl<T: Sized + Copy> BufferedState<T> {
 }
 
 pub struct StateReader<'a, T: Copy> {
-    state: NonNull<BufferedState<T>>,
+    state: NonNull<BufferedState<'a, T>>,
     _life: PhantomData<&'a ()>,
 }
 
@@ -59,7 +61,7 @@ impl<'a, T: Copy> StateReader<'a, T> {
 unsafe impl<'a, T: Copy> Send for StateReader<'a, T> {}
 
 pub struct StateWriter<'a, T: Copy> {
-    state: NonNull<BufferedState<T>>,
+    state: NonNull<BufferedState<'a, T>>,
     _life: PhantomData<&'a ()>,
 }
 
@@ -108,25 +110,3 @@ impl<'a, T: Copy> Drop for StateGuard<'a, T> {
         self.current.store(self.target, Ordering::Relaxed);
     }
 }
-
-// impl<'a, T: Copy> StateWriter<'a, T> {
-//     pub fn modify<'s>(&mut self, mut mutator: impl FnMut(&'s T))
-//     where
-//         T: 's + 'a,
-//     {
-//         // Safety: enforced to be non-null by NonNull
-//         let state = unsafe { self.state.as_mut() };
-
-//         // Identify which buffer is safe for writing to.
-//         let target_idx = match state.buffer.load(Ordering::Acquire) {
-//             0 => 1,
-//             _ => 0,
-//         };
-//         // Call the mutator with the currently unused buffer.
-//         mutator(&mut state.value[target_idx]);
-//         // This is the atomic instruction that, when successful, swaps the buffer pointer.
-//         // Even if this thread is preempted between the above and below instructions, the
-//         // reader will only get a slightly outdated copy of the protected data.
-//         state.buffer.store(target_idx, Ordering::Release);
-//     }
-// }

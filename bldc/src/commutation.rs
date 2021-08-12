@@ -5,7 +5,9 @@ pub struct Board {
     pub tim1: device::TIM1,
 }
 
-pub struct ControlLoop {
-    // board: Board,
-    pub asdf: u32,
+#[derive(Clone, Copy)]
+pub struct ControlParameters {
+    pub pwm_duty: f32,
+    pub d: f32,
+    pub q: f32,
 }

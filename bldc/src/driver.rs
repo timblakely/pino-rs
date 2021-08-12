@@ -1,6 +1,6 @@
 use crate::comms::fdcan::FdcanMessage;
-use crate::commutation::{Board, ControlLoop};
-use crate::util::buffered_state::BufferedState;
+use crate::commutation::{Board, ControlParameters};
+use crate::util::buffered_state::{BufferedState, StateReader};
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
 };
@@ -20,7 +20,7 @@ use fixed::types::I1F31;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, disable_irq, enable_irq};
-use third_party::m4vga_rs::util::spin_lock::SpinLock;
+use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
 
 pub struct Controller<S> {
     pub mode_state: S,
@@ -913,13 +913,6 @@ impl Controller<Init> {
         // ADC1 IRQ
         enable_irq(device::Interrupt::ADC1_2);
 
-        // Kick off tim1.
-        self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
-        // Now that the timer has started, enable the main output to allow current on the pins. If
-        // we do this before we enable the time, we have the potential to get into a state where the
-        // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-        // current through the high phase to any low phases.
-        self.mode_state.tim1.bdtr.modify(|_, w| w.moe().set_bit());
         // Kick off tim3.
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
@@ -966,45 +959,61 @@ impl Controller<Init> {
     }
 }
 
-// trait SendSyncFn: Fn() + Send + Sync {}
-// impl<T: Fn() + Send + Sync> SendSyncFn for T {}
-
-static COMMUTATION_CB: third_party::m4vga_rs::util::iref::IRef<(ControlLoop,)> =
+static CONTROL: third_party::m4vga_rs::util::iref::IRef<(&ControlParameters,)> =
     third_party::m4vga_rs::util::iref::IRef::new();
+static CONTROL_PARAMS: SpinLock<Option<StateReader<ControlParameters>>> = SpinLock::new(None);
+static SHARED_STATE: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl<D> Controller<Ready<D>>
 where
     D: DrvState,
 {
-    pub fn run<S: Copy>(
+    pub fn run(
         self,
-        initial_state: S,
-        mut comms_handler: impl FnMut(&FdcanMessage, &mut S),
-        mut commutation_impl: impl for<'a> FnMut(ControlLoop) + Send,
+        initial_state: ControlParameters,
+        mut comms_handler: impl FnMut(&FdcanMessage, &mut ControlParameters),
+        mut commutation_impl: impl FnMut(&ControlParameters) + Send,
     ) {
         // Since the interrupt handler can interrupt the main thread's modifications of any shared
         // state, we use a double-buffer and atomic swap to ensure a full update.
-        let mut shared_state = BufferedState::<S>::new(initial_state);
+        *SHARED_STATE.try_lock().unwrap() =
+            Some(BufferedState::<ControlParameters>::new(initial_state));
         // Split the two states into a read-only control state that has read priority, and a mutable
         // state used for communication that writes the unused state and atomically swaps on
         // completion.
-        let (_control_state, mut comms_state) = shared_state.split();
+        let mut shared_state = SpinLockGuard::map(
+            SHARED_STATE.try_lock().expect("Shared state lock held"),
+            |o| o.as_mut().expect("Shared state not initialized"),
+        );
+        let (control_state, mut comms_state) = shared_state.split();
+        *CONTROL_PARAMS.lock() = Some(control_state);
 
-        static BOARD: SpinLock<Option<Board>> = SpinLock::new(None);
-        *BOARD.try_lock().unwrap() = Some(Board {
-            tim1: self.mode_state.tim1,
-        });
+        // Kick off tim1.
+        self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
+        // Now that the timer has started, enable the main output to allow current on the pins. If
+        // we do this before we enable the time, we have the potential to get into a state where the
+        // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+        // current through the high phase to any low phases.
+        self.mode_state.tim1.bdtr.modify(|_, w| w.moe().set_bit());
 
-        COMMUTATION_CB.donate(&mut commutation_impl, || {
+        // This is where the fun starts. We've got the commutation function here in the main loop,
+        // but we've got to send it to the interrupt handler. Callbacks are fat pointers, and so far
+        // you're only allowed to store trait objects (`dyn FnMut`) in `Box`es. We're getting around
+        // that by donating it to an `IRef` thats' accessible from the ADC1_2 interrupt handler. The
+        // way `IRef` works is that it donates the reference only as long as the `scope` parameter
+        // is not finished. Once `scope` returns, it will wait for any observers to complete then to
+        // the empty state.
+        CONTROL.donate(&mut commutation_impl, || {
             loop {
-                // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing -
-                // the only other interrupt that shares this particular buffer - ensuring we aren't
-                // preempted when reading from it. This is fine in general since the peripheral itself
-                // has an internal buffer, and as long as we can clear the backlog before the peripheral
-                // receives 4 requests we should be good. Alternatively, we could just process a single
-                // message here to make sure that we only hold this lock for the absolute minimum time,
-                // since there's an internal buffer in the FDCAN. Bad form though...
+                // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from
+                // firing - the only other interrupt that shares this particular buffer - ensuring
+                // we aren't preempted when reading from it. This is fine in general since the
+                // peripheral itself has an internal buffer, and as long as we can clear the backlog
+                // before the peripheral receives 4 requests we should be good. Alternatively, we
+                // could just process a single message here to make sure that we only hold this lock
+                // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
+                // form though...
                 crate::util::interrupts::free_from(
                     device::interrupt::FDCAN1_INTR1_IT,
                     &FDCAN_RECEIVE_BUF,
@@ -1040,7 +1049,15 @@ fn ADC1_2() {
     unsafe {
         *(0x5000_0000 as *mut u32) = 1 << 3;
     }
-    COMMUTATION_CB.observe(|r| r(ControlLoop { asdf: 123 }));
+    // let control_parameters = match *CONTROL_PARAMS.try_lock().as_mut().expect("adc interrupt") {
+    //     Some(x) => x,
+    //     None => panic!("params weren't set"),
+    // };
+    let control_parameters = SpinLockGuard::map(
+        CONTROL_PARAMS.try_lock().expect("adc interrupt lock"),
+        |o| o.as_mut().expect("Control params not set"),
+    );
+    CONTROL.observe(|r| r(control_parameters.read()));
     clear_pending_irq(device::Interrupt::ADC1_2);
 }
 

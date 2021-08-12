@@ -1,21 +1,24 @@
 use super::fdcan::FdcanMessage;
 
 // Just for testing; do not use in regular communication.
-pub struct Debug {
+pub struct ForcePwm {
     pub foo: u32,
-    pub bar: f32,
+    pub pwm_duty: f32,
     pub baz: u8,
     pub toot: [u8; 3],
 }
 
-pub struct Debug2 {
-    pub first: u32,
-    pub second: i32,
+pub struct SetCurrents {
+    pub q: f32,
+    pub d: f32,
 }
 
+pub struct EStop {}
+
 pub enum Messages {
-    Debug(Debug),
-    Debug2(Debug2),
+    ForcePwm(ForcePwm),
+    SetCurrents(SetCurrents),
+    EStop(EStop),
 }
 
 pub trait ExtendedFdcanFrame {
@@ -27,12 +30,12 @@ pub trait ExtendedFdcanFrame {
     fn pack(&self) -> FdcanMessage;
 }
 
-impl ExtendedFdcanFrame for Debug {
+impl ExtendedFdcanFrame for ForcePwm {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
-        Debug {
+        ForcePwm {
             foo: buffer[0],
-            bar: f32::from_bits(buffer[1]),
+            pwm_duty: f32::from_bits(buffer[1]),
             baz: (buffer[2] & 0xFF) as u8,
             toot: [
                 ((buffer[2] & (0xFF << 8)) >> 8) as u8,
@@ -47,7 +50,7 @@ impl ExtendedFdcanFrame for Debug {
             0xA,
             [
                 self.foo as u32,
-                self.bar.to_bits(),
+                self.pwm_duty.to_bits(),
                 (self.baz as u32) << 24
                     | (self.toot[2] as u32) << 16
                     | (self.toot[1] as u32) << 8
@@ -57,25 +60,36 @@ impl ExtendedFdcanFrame for Debug {
     }
 }
 
-impl ExtendedFdcanFrame for Debug2 {
+impl ExtendedFdcanFrame for EStop {
+    fn unpack(_: &FdcanMessage) -> Self {
+        EStop {}
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        FdcanMessage::new(0x0, [])
+    }
+}
+
+impl ExtendedFdcanFrame for SetCurrents {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
-        Debug2 {
-            first: buffer[0] as u32,
-            second: buffer[1] as i32,
+        SetCurrents {
+            q: buffer[0] as f32,
+            d: buffer[1] as f32,
         }
     }
 
     fn pack(&self) -> FdcanMessage {
-        FdcanMessage::new(0xB, [self.first, self.second as u32])
+        FdcanMessage::new(0xB, [self.q as u32, self.d as u32])
     }
 }
 
 impl Messages {
     pub fn unpack_fdcan(message: &FdcanMessage) -> Option<Self> {
         match message.id {
-            0xA => Some(Self::Debug(Debug::unpack(message))),
-            0xB => Some(Self::Debug2(Debug2::unpack(message))),
+            0x0 => Some(Self::EStop(EStop::unpack(message))),
+            0xA => Some(Self::ForcePwm(ForcePwm::unpack(message))),
+            0xB => Some(Self::SetCurrents(SetCurrents::unpack(message))),
             _ => None,
         }
     }
