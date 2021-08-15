@@ -513,7 +513,7 @@ impl Controller<Init> {
         // tim1.ccr1.write(|w| w.ccr1().bits(2125));
         // tim1.ccr2.write(|w| w.ccr2().bits(1000));
         // tim1.ccr3.write(|w| w.ccr3().bits(2083));
-        tim1.ccr1.write(|w| w.ccr1().bits(40));
+        tim1.ccr1.write(|w| w.ccr1().bits(0));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
         // Set channel 4 to trigger _just_ before the midway point.
