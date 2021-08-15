@@ -67,3 +67,6 @@ After Fourier, multiply by exponential:
 ![](images/2021-08-14-22-58-00.png)
 
 - Key point: Transfer functions are $\frac{zeros}{poles}$
+
+![](images/2021-08-14-23-03-31.png)
+![](images/2021-08-14-23-04-12.png)
