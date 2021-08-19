@@ -814,8 +814,6 @@ impl Controller<Init> {
         let gpioc = &self.mode_state.gpioc;
         let drv =
             drv8323rs::new(self.mode_state.spi3).enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
-        // Sleepy DRV requires a whole millisecond to wake up!
-        blocking_sleep_us(1000);
         // Configure DRV8323RS.
         {
             use drv8323rs::registers::*;

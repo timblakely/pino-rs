@@ -1,6 +1,7 @@
 use crate::block_until;
 use crate::block_while;
 use crate::util::bitfield;
+use crate::util::stm32::blocking_sleep_us;
 use core::marker::PhantomData;
 use stm32g4::stm32g474 as device;
 
@@ -16,6 +17,8 @@ impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
     pub fn read(&self) -> bitfield::ReadProxy<u16, T> {
         let spi = self.spi;
         let addr = T::addr();
+        // Minimum of 400ns between frames
+        blocking_sleep_us(1);
 
         // Enable SPI
         spi.cr1.modify(|_, w| w.spe().set_bit());
@@ -51,6 +54,8 @@ impl<'a, T: 'a + Addr> DrvRegister<'a, T> {
         let spi = self.spi;
         let addr = T::addr();
 
+        // Minimum of 400ns between frames
+        blocking_sleep_us(1);
         // Enable SPI
         spi.cr1.modify(|_, w| w.spe().set_bit());
         block_until! { spi.cr1.read().spe().bit_is_set() }
@@ -126,9 +131,10 @@ impl Drv8323rs<Sleep> {
             spi: self.spi,
             mode_state: Enabled {},
         };
-        // DRV8323's SPI port takes ~1ms to wake up. Poll until we get a reset value we expect.
-        // TODO(blakely): I don't like blocking here, but don't want to sacrifice a timer or enable
-        // SysTick. Figure out something better.
+
+        // Sleepy DRV8323's SPI port takes ~1ms to wake up.
+        blocking_sleep_us(1000);
+        // Make sure we can read the default bits after enabling.
         block_until! { new_drv.gate_drive_hs().read().bits == 1023 }
         new_drv
     }
