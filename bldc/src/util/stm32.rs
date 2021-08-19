@@ -156,7 +156,7 @@ pub fn disable_dead_battery_pd(pwr: &device::PWR) {
 static SYSTICK_SHARED: SpinLock<Option<SYST>> = SpinLock::new(None);
 
 // Small wrapper to make sure that SYSTICK_SHARED doesn't escape this module.
-pub fn donate_systick(mut systick: device::SYST) {
+pub fn donate_systick(systick: device::SYST) {
     *SYSTICK_SHARED.try_lock().unwrap() = Some(systick);
 }
 

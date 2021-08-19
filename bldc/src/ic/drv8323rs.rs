@@ -6,7 +6,9 @@ use core::marker::PhantomData;
 use stm32g4::stm32g474 as device;
 
 pub mod registers;
-use registers::Addr;
+use registers::{
+    Addr, CsaDivisor, CsaGain, DriveCurrent, OffsetCalibration, PwmMode, SenseOcp, SenseOvercurrent,
+};
 
 pub struct DrvRegister<'a, T: Addr> {
     spi: &'a device::SPI3,
@@ -79,12 +81,54 @@ pub struct Drv8323rs<S: DrvState> {
     mode_state: S,
 }
 
+impl<'a, S: DrvState> Drv8323rs<S> {
+    fn drv_register<RegType: Addr>(&'a self) -> DrvRegister<'a, RegType> {
+        DrvRegister {
+            spi: &self.spi,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn fault_status_1(&'a self) -> DrvRegister<'a, registers::fs1::FaultStatus1> {
+        self.drv_register()
+    }
+
+    pub fn fault_status_2(&'a self) -> DrvRegister<'a, registers::fs2::FaultStatus2> {
+        self.drv_register()
+    }
+
+    pub fn control_register(&'a self) -> DrvRegister<'a, registers::cr::ControlRegister> {
+        self.drv_register()
+    }
+
+    pub fn gate_drive_hs(&'a self) -> DrvRegister<'a, registers::gdhs::GateDriveHighSide> {
+        self.drv_register()
+    }
+
+    pub fn gate_drive_ls(&'a self) -> DrvRegister<'a, registers::gdls::GateDriveLowSide> {
+        self.drv_register()
+    }
+
+    pub fn over_current_protection(
+        &'a self,
+    ) -> DrvRegister<'a, registers::ocp::OverCurrentProtection> {
+        self.drv_register()
+    }
+
+    pub fn current_sense(&'a self) -> DrvRegister<'a, registers::csa::CurrentSenseAmplifier> {
+        self.drv_register()
+    }
+}
+
 pub trait DrvState {}
 
 pub struct Sleep {}
 impl DrvState for Sleep {}
 pub struct Enabled {}
 impl DrvState for Enabled {}
+
+pub struct Ready {}
+impl DrvState for Ready {}
 
 pub fn new<'a>(spi: device::SPI3) -> Drv8323rs<Sleep> {
     // Disable SPI, if enabled.
@@ -141,43 +185,82 @@ impl Drv8323rs<Sleep> {
 }
 
 impl<'a> Drv8323rs<Enabled> {
-    fn drv_register<RegType: Addr>(&'a self) -> DrvRegister<'a, RegType> {
-        DrvRegister {
-            spi: &self.spi,
-            _marker: PhantomData,
+    pub fn calibrate(self) -> Drv8323rs<Ready> {
+        // TODO(blakely): Move configuration up to higher level.
+        self.control_register().update(|_, w| {
+            w.disable_gate_drive_fault()
+                .clear_bit()
+                .disable_uvlo()
+                .clear_bit()
+                .pwm_mode()
+                .variant(PwmMode::Pwm3x)
+                .clear_latched_faults()
+                .set_bit()
+        });
+        self.current_sense().update(|_, w| {
+            w.vref_divisor()
+                .variant(CsaDivisor::Two)
+                .current_sense_gain()
+                .variant(CsaGain::V40)
+                .sense_level()
+                .variant(SenseOcp::V1)
+                .overcurrent_fault()
+                .variant(SenseOvercurrent::Enabled)
+        });
+        // Begin ADC calibration. Requires >=100us
+        self.current_sense().update(|_, w| {
+            w.offset_calibration_a()
+                .variant(OffsetCalibration::Calibration)
+                .offset_calibration_b()
+                .variant(OffsetCalibration::Calibration)
+                .offset_calibration_c()
+                .variant(OffsetCalibration::Calibration)
+        });
+        blocking_sleep_us(200);
+        // Leave calibration mode
+        self.current_sense().update(|_, w| {
+            w.offset_calibration_a()
+                .variant(OffsetCalibration::Normal)
+                .offset_calibration_b()
+                .variant(OffsetCalibration::Normal)
+                .offset_calibration_c()
+                .variant(OffsetCalibration::Normal)
+        });
+
+        // Use 1A drive current for FETs
+        self.gate_drive_hs().update(|_, w| {
+            w.idrive_p_high_side()
+                .variant(DriveCurrent::Milli1000)
+                .idrive_n_high_side()
+                .variant(DriveCurrent::Milli1000)
+        });
+        self.gate_drive_ls().update(|_, w| {
+            w.idrive_p_low_side()
+                .variant(DriveCurrent::Milli1000)
+                .idrive_n_low_side()
+                .variant(DriveCurrent::Milli1000)
+        });
+
+        // Reset config after calibration
+        self.current_sense().update(|_, w| {
+            w.vref_divisor()
+                .variant(CsaDivisor::Two)
+                .current_sense_gain()
+                .variant(CsaGain::V40)
+                .sense_level()
+                .variant(SenseOcp::V1)
+                .overcurrent_fault()
+                .variant(SenseOvercurrent::Enabled)
+        });
+
+        Drv8323rs {
+            spi: self.spi,
+            mode_state: Ready {},
         }
     }
+}
 
-    pub fn fault_status_1(&'a self) -> DrvRegister<'a, registers::fs1::FaultStatus1> {
-        self.drv_register()
-    }
-
-    pub fn fault_status_2(&'a self) -> DrvRegister<'a, registers::fs2::FaultStatus2> {
-        self.drv_register()
-    }
-
-    pub fn control_register(&'a self) -> DrvRegister<'a, registers::cr::ControlRegister> {
-        self.drv_register()
-    }
-
-    pub fn gate_drive_hs(&'a self) -> DrvRegister<'a, registers::gdhs::GateDriveHighSide> {
-        self.drv_register()
-    }
-
-    pub fn gate_drive_ls(&'a self) -> DrvRegister<'a, registers::gdls::GateDriveLowSide> {
-        self.drv_register()
-    }
-
-    pub fn over_current_protection(
-        &'a self,
-    ) -> DrvRegister<'a, registers::ocp::OverCurrentProtection> {
-        self.drv_register()
-    }
-
-    pub fn current_sense(&'a self) -> DrvRegister<'a, registers::csa::CurrentSenseAmplifier> {
-        self.drv_register()
-    }
-
+impl<'a> Drv8323rs<Ready> {
     pub fn disable<T: FnOnce()>(self, disable: T) -> Drv8323rs<Sleep> {
         (disable)();
         Drv8323rs {

@@ -1,9 +1,8 @@
 use crate::comms::fdcan::FdcanMessage;
 use crate::commutation::{ControlParameters, Hardware};
 use crate::util::buffered_state::{BufferedState, StateReader};
-use crate::util::stm32::donate_systick;
 use crate::util::stm32::{
-    blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
+    blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
 use crate::{
     block_until,
@@ -14,9 +13,8 @@ use crate::{
     ic::drv8323rs,
     ic::ma702::{self, Ma702, Streaming},
 };
-use core::cell::RefCell;
 use cortex_m::peripheral as cm;
-use drv8323rs::{Drv8323rs, DrvState};
+use drv8323rs::Drv8323rs;
 use fixed::types::I1F31;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
@@ -48,10 +46,9 @@ pub struct Init {
     pub cordic: device::CORDIC,
 }
 
-pub struct Ready<D: DrvState> {
+pub struct Ready {
     pub ma702: Ma702<Streaming>,
-    // TODO(blakely): Make this a `dyn Drv8323`, removing the need to pass around the generic.
-    pub drv: Drv8323rs<D>,
+    pub drv: Drv8323rs<drv8323rs::Ready>,
     pub gpioa: device::GPIOA,
     pub tim1: device::TIM1,
 }
@@ -202,7 +199,7 @@ fn init(
 impl Controller<Init> {
     // TODO(blakely): Move into a device-specific, feature-guarded trait
     fn configure_gpio(&self) {
-        // TODO(blakely): Implement split-borrowing ro allow devices to take their own pins.
+        // TODO(blakely): Implement split-borrowing to allow devices to take their own pins.
         // Configure GPIOA pins
         // PA0 - ADC2_IN1 - SENSE_B
         // PA1 - ADC1_IN2 - SENSE_A
@@ -802,7 +799,7 @@ impl Controller<Init> {
         adc5.cr.modify(|_, w| w.adstart().set_bit());
     }
 
-    pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
+    pub fn configure_peripherals<'a>(self) -> Controller<Ready> {
         self.configure_gpio();
         self.configure_timers();
         self.configure_adcs();
@@ -812,77 +809,9 @@ impl Controller<Init> {
             .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
 
         let gpioc = &self.mode_state.gpioc;
-        let drv =
-            drv8323rs::new(self.mode_state.spi3).enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
-        // Configure DRV8323RS.
-        {
-            use drv8323rs::registers::*;
-            drv.control_register().update(|_, w| {
-                w.disable_gate_drive_fault()
-                    .clear_bit()
-                    .disable_uvlo()
-                    .clear_bit()
-                    .pwm_mode()
-                    .variant(PwmMode::Pwm3x)
-                    .clear_latched_faults()
-                    .set_bit()
-            });
-            drv.current_sense().update(|_, w| {
-                w.vref_divisor()
-                    .variant(CsaDivisor::Two)
-                    .current_sense_gain()
-                    .variant(CsaGain::V40)
-                    .sense_level()
-                    .variant(SenseOcp::V1)
-                    .overcurrent_fault()
-                    .variant(SenseOvercurrent::Enabled)
-            });
-            // Begin ADC calibration. Requires >=100us
-            drv.current_sense().update(|_, w| {
-                w.offset_calibration_a()
-                    .variant(OffsetCalibration::Calibration)
-                    .offset_calibration_b()
-                    .variant(OffsetCalibration::Calibration)
-                    .offset_calibration_c()
-                    .variant(OffsetCalibration::Calibration)
-            });
-            blocking_sleep_us(200);
-            // Leave calibration mode
-            drv.current_sense().update(|_, w| {
-                w.offset_calibration_a()
-                    .variant(OffsetCalibration::Normal)
-                    .offset_calibration_b()
-                    .variant(OffsetCalibration::Normal)
-                    .offset_calibration_c()
-                    .variant(OffsetCalibration::Normal)
-            });
-
-            // Use 1A drive current for FETs
-            drv.gate_drive_hs().update(|_, w| {
-                w.idrive_p_high_side()
-                    .variant(DriveCurrent::Milli1000)
-                    .idrive_n_high_side()
-                    .variant(DriveCurrent::Milli1000)
-            });
-            drv.gate_drive_ls().update(|_, w| {
-                w.idrive_p_low_side()
-                    .variant(DriveCurrent::Milli1000)
-                    .idrive_n_low_side()
-                    .variant(DriveCurrent::Milli1000)
-            });
-
-            // Reset config after calibration
-            drv.current_sense().update(|_, w| {
-                w.vref_divisor()
-                    .variant(CsaDivisor::Two)
-                    .current_sense_gain()
-                    .variant(CsaGain::V40)
-                    .sense_level()
-                    .variant(SenseOcp::V1)
-                    .overcurrent_fault()
-                    .variant(SenseOvercurrent::Enabled)
-            });
-        }
+        let drv = drv8323rs::new(self.mode_state.spi3)
+            .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
+            .calibrate();
 
         // Configure FDCAN
         let fdcan = fdcan::take(self.mode_state.fdcan)
@@ -963,10 +892,7 @@ static COMMUTATION_SHARED: SpinLock<Option<(Hardware, StateReader<ControlParamet
 static COMMS_SHARED: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
-impl<D> Controller<Ready<D>>
-where
-    D: DrvState,
-{
+impl Controller<Ready> {
     pub fn run(
         self,
         initial_state: ControlParameters,

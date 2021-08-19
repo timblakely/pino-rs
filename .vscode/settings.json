@@ -5,7 +5,6 @@
   "rewrap.autoWrap.enabled": true,
   "rust-analyzer.inlayHints.enable": false,
   "lldb.displayFormat": "auto",
-  "lldb.showDisassembly": "always",
   "lldb.dereferencePointers": true,
   "rust-analyzer.checkOnSave.allTargets": false,
   "rust-analyzer.checkOnSave.target": "thumbv7em-none-eabihf",
@@ -17,5 +16,6 @@
     "Vdroop",
     "Vref",
     "breakin"
-  ]
+  ],
+  "lldb.showDisassembly": "always"
 }
