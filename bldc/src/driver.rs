@@ -1,6 +1,7 @@
 use crate::comms::fdcan::FdcanMessage;
 use crate::commutation::{ControlParameters, Hardware};
 use crate::util::buffered_state::{BufferedState, StateReader};
+use crate::util::stm32::donate_systick;
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
 };
@@ -24,7 +25,6 @@ use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
 
 pub struct Controller<S> {
     pub mode_state: S,
-    syst: RefCell<device::SYST>,
 }
 
 pub struct Init {
@@ -60,6 +60,9 @@ pub fn take_hardware() -> Controller<Init> {
     let cp = cm::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();
 
+    // Donate the SYST peripheral to the blocking sleep handler so it's available anywhere.
+    donate_systick(cp.SYST);
+
     init(
         cp.NVIC,
         p.RCC,
@@ -83,7 +86,6 @@ pub fn take_hardware() -> Controller<Init> {
         p.ADC4,
         p.ADC5,
         p.CORDIC,
-        cp.SYST,
     )
 }
 
@@ -110,7 +112,6 @@ fn init(
     adc4: device::ADC4,
     adc5: device::ADC5,
     cordic: device::CORDIC,
-    syst: device::SYST,
 ) -> Controller<Init> {
     disable_dead_battery_pd(&pwr);
 
@@ -195,7 +196,6 @@ fn init(
             adc5,
             cordic,
         },
-        syst: RefCell::new(syst),
     }
 }
 
@@ -539,7 +539,7 @@ impl Controller<Init> {
         });
     }
 
-    fn configure_adcs(&self, syst: &mut device::SYST) {
+    fn configure_adcs(&self) {
         let adc1 = &self.mode_state.adc1;
         let adc2 = &self.mode_state.adc2;
         let adc3 = &self.mode_state.adc3;
@@ -624,7 +624,7 @@ impl Controller<Init> {
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
 
         // Allow voltage regulators to warm up. Datasheet says 20us max.
-        blocking_sleep_us(syst, 20);
+        blocking_sleep_us(20);
 
         // Begin calibration
         // Can probably combine these modifies, but kept separate in case the clear bit has to be
@@ -805,17 +805,20 @@ impl Controller<Init> {
     pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
         self.configure_gpio();
         self.configure_timers();
-        self.configure_adcs(&mut self.syst.borrow_mut());
+        self.configure_adcs();
 
         let ma702 = ma702::new(self.mode_state.spi1)
             .configure_spi()
             .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
 
         let gpioc = &self.mode_state.gpioc;
-        let drv =
-            drv8323rs::new(self.mode_state.spi3).enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
+        let drv = drv8323rs::new(self.mode_state.spi3);
+        // HACK HACK HACK
         // Sleepy DRV requires a whole millisecond to wake up!
-        blocking_sleep_us(&mut self.syst.borrow_mut(), 1000);
+        blocking_sleep_us(1000);
+        let drv = drv.enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
+        // Sleepy DRV requires a whole millisecond to wake up!
+        blocking_sleep_us(1000);
         // Configure DRV8323RS.
         {
             use drv8323rs::registers::*;
@@ -848,7 +851,7 @@ impl Controller<Init> {
                     .offset_calibration_c()
                     .variant(OffsetCalibration::Calibration)
             });
-            blocking_sleep_us(&mut self.syst.borrow_mut(), 200);
+            blocking_sleep_us(200);
             // Leave calibration mode
             drv.current_sense().update(|_, w| {
                 w.offset_calibration_a()
@@ -947,7 +950,6 @@ impl Controller<Init> {
         let _sin: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
 
         let new_self = Controller {
-            syst: self.syst,
             mode_state: Ready {
                 ma702,
                 drv,
