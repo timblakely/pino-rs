@@ -812,11 +812,8 @@ impl Controller<Init> {
             .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
 
         let gpioc = &self.mode_state.gpioc;
-        let drv = drv8323rs::new(self.mode_state.spi3);
-        // HACK HACK HACK
-        // Sleepy DRV requires a whole millisecond to wake up!
-        blocking_sleep_us(1000);
-        let drv = drv.enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
+        let drv =
+            drv8323rs::new(self.mode_state.spi3).enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
         // Sleepy DRV requires a whole millisecond to wake up!
         blocking_sleep_us(1000);
         // Configure DRV8323RS.
