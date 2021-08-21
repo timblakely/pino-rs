@@ -813,6 +813,10 @@ impl Controller<Init> {
             .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
             .calibrate();
 
+        // HACK HACK HACK
+        // Disabling DRV while testing triangle wave pulses
+        // gpioc.bsrr.write(|w| w.br6().set_bit());
+
         // Configure FDCAN
         let fdcan = fdcan::take(self.mode_state.fdcan)
             .enter_init()
@@ -919,6 +923,8 @@ impl Controller<Ready> {
                 Hardware {
                     tim1: self.mode_state.tim1,
                     ma702: self.mode_state.ma702,
+                    sign: -1.,
+                    square_wave_state: 0,
                 },
                 control_params,
             ));

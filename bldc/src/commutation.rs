@@ -5,6 +5,9 @@ use stm32g4::stm32g474 as device;
 pub struct Hardware {
     pub tim1: device::TIM1,
     pub ma702: Ma702<Streaming>,
+    // TODO(blakely): Move this into its own struct.
+    pub sign: f32,
+    pub square_wave_state: u32,
 }
 
 #[derive(Clone, Copy)]
