@@ -5,6 +5,13 @@ use stm32g4::stm32g474 as device;
 pub struct Hardware {
     pub tim1: device::TIM1,
     pub ma702: Ma702<Streaming>,
+    pub adcs: (
+        device::ADC1,
+        device::ADC2,
+        device::ADC3,
+        device::ADC4,
+        device::ADC5,
+    ),
     // TODO(blakely): Move this into its own struct.
     pub sign: f32,
     pub square_wave_state: u32,

@@ -49,6 +49,16 @@ fn main() -> ! {
 
             const CALIB_PWM_DUTY: f32 = 2. / 24.;
             const CCR_2V: u16 = (CALIB_PWM_DUTY * 2125.) as u16;
+            // Set CH4 to be PWM2, or opposite polarity of the other timer channels.
+            hardware
+                .tim1
+                .ccmr2_output()
+                .modify(|_, w| w.oc4m().pwm_mode2());
+            // Set ADC trigger time relative to PWM pulse.
+            hardware
+                .tim1
+                .ccr4
+                .write(|w| unsafe { w.ccr4().bits(CCR_2V) });
             match hardware.square_wave_state {
                 0 => {
                     // Switching states
@@ -57,7 +67,7 @@ fn main() -> ! {
                 }
                 _ => {
                     hardware.square_wave_state += 1;
-                    if hardware.square_wave_state >= 2 {
+                    if hardware.square_wave_state >= 4 {
                         hardware.square_wave_state = 0;
                     }
                 }

@@ -51,6 +51,13 @@ pub struct Ready {
     pub drv: Drv8323rs<drv8323rs::Ready>,
     pub gpioa: device::GPIOA,
     pub tim1: device::TIM1,
+    pub adcs: (
+        device::ADC1,
+        device::ADC2,
+        device::ADC3,
+        device::ADC4,
+        device::ADC5,
+    ),
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -504,12 +511,6 @@ impl Controller<Init> {
         // up/down count cycle.
         // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
         tim1.rcr.write(|w| unsafe { w.rep().bits(1) });
-        // TODO(blakely): Actually use these in the control loop, but for now just set them to some
-        // reasonable values.
-        // HACK HACK HACK - Disabled for testing with ADC timing
-        // tim1.ccr1.write(|w| w.ccr1().bits(2125));
-        // tim1.ccr2.write(|w| w.ccr2().bits(1000));
-        // tim1.ccr3.write(|w| w.ccr3().bits(2083));
         tim1.ccr1.write(|w| w.ccr1().bits(0));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
@@ -813,10 +814,6 @@ impl Controller<Init> {
             .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
             .calibrate();
 
-        // HACK HACK HACK
-        // Disabling DRV while testing triangle wave pulses
-        // gpioc.bsrr.write(|w| w.br6().set_bit());
-
         // Configure FDCAN
         let fdcan = fdcan::take(self.mode_state.fdcan)
             .enter_init()
@@ -883,6 +880,13 @@ impl Controller<Init> {
                 drv,
                 gpioa: self.mode_state.gpioa,
                 tim1: self.mode_state.tim1,
+                adcs: (
+                    self.mode_state.adc1,
+                    self.mode_state.adc2,
+                    self.mode_state.adc3,
+                    self.mode_state.adc4,
+                    self.mode_state.adc5,
+                ),
             },
         };
         new_self
@@ -923,6 +927,7 @@ impl Controller<Ready> {
                 Hardware {
                     tim1: self.mode_state.tim1,
                     ma702: self.mode_state.ma702,
+                    adcs: self.mode_state.adcs,
                     sign: -1.,
                     square_wave_state: 0,
                 },
@@ -945,6 +950,8 @@ impl Controller<Ready> {
                 hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
             },
         );
+
+        //
 
         // This is where the fun starts. We've got the commutation function here in the main loop,
         // but we've got to send it to the interrupt handler. Callbacks are fat pointers, and so far
