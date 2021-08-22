@@ -1,5 +1,5 @@
 use crate::{
-    current_sensing::CurrentSensor,
+    current_sensing::{self, CurrentSensor},
     ic::ma702::{Ma702, Streaming},
 };
 use stm32g4::stm32g474 as device;
@@ -8,7 +8,7 @@ use stm32g4::stm32g474 as device;
 pub struct Hardware {
     pub tim1: device::TIM1,
     pub ma702: Ma702<Streaming>,
-    pub current_sensor: CurrentSensor,
+    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
     // TODO(blakely): Move this into its own struct.
     pub sign: f32,
     pub square_wave_state: u32,

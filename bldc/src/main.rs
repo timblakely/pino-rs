@@ -55,12 +55,10 @@ fn main() -> ! {
                 .ccmr2_output()
                 .modify(|_, w| w.oc4m().pwm_mode2());
             // Set ADC trigger time relative to PWM pulse.
-            hardware
-                .tim1
-                .ccr4
-                .write(|w| unsafe { w.ccr4().bits(CCR_2V) });
+            hardware.tim1.ccr4.write(|w| w.ccr4().bits(CCR_2V));
 
-            let foo = hardware.current_sensor.get_v_refint();
+            let _foo = hardware.current_sensor.sample();
+
             match hardware.square_wave_state {
                 0 => {
                     // Switching states

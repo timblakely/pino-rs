@@ -1,10 +1,9 @@
 use crate::comms::fdcan::FdcanMessage;
 use crate::commutation::{ControlParameters, Hardware};
 use crate::current_sensing::{self, CurrentSensor};
-use crate::ic::drv8323rs::registers::csa::CurrentSenseAmplifier;
 use crate::util::buffered_state::{BufferedState, StateReader};
 use crate::util::stm32::{
-    blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
+    clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
 use crate::{
     block_until,
@@ -22,6 +21,8 @@ use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, disable_irq, enable_irq};
 use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
+
+const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
 pub struct Controller<S> {
     pub mode_state: S,
@@ -53,7 +54,7 @@ pub struct Ready {
     pub drv: Drv8323rs<drv8323rs::Ready>,
     pub gpioa: device::GPIOA,
     pub tim1: device::TIM1,
-    pub current_sensor: CurrentSensor,
+    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -533,64 +534,20 @@ impl Controller<Init> {
         });
     }
 
-    fn configure_adcs(&self) {
-        let adc1 = &self.mode_state.adc1;
-        let adc2 = &self.mode_state.adc2;
-        let adc3 = &self.mode_state.adc3;
-        let adc4 = &self.mode_state.adc4;
-        let adc5 = &self.mode_state.adc5;
-        // Begin in a sane state.
-        adc1.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
-        adc2.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
-        adc3.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
-        adc4.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
-        adc5.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
+    pub fn configure_peripherals<'a>(self) -> Controller<Ready> {
+        self.configure_gpio();
+        self.configure_timers();
 
+        let ma702 = ma702::new(self.mode_state.spi1)
+            .configure_spi()
+            .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
+
+        let gpioc = &self.mode_state.gpioc;
+        let drv = drv8323rs::new(self.mode_state.spi3)
+            .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
+            .calibrate();
+
+        // Set up current sensing.
         // Set up the ADC clocks. We're assuming we're running on a 170MHz AHB bus, so div=4 gives
         // us 42.5MHz (below max freq of 60MHz for single or 52MHz for multiple channels).
         self.mode_state
@@ -604,211 +561,17 @@ impl Controller<Init> {
                 .vrefen()
                 .set_bit()
         });
-
-        // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
-        adc1.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-        adc2.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-        adc3.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-        adc4.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-        adc5.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-
-        // Allow voltage regulators to warm up. Datasheet says 20us max.
-        blocking_sleep_us(20);
-
-        // Begin calibration
-        // Can probably combine these modifies, but kept separate in case the clear bit has to be
-        // set first.
-        adc1.cr.modify(|_, w| w.aden().clear_bit());
-        adc1.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc1.cr.modify(|_, w| w.adcal().set_bit());
-        adc2.cr.modify(|_, w| w.aden().clear_bit());
-        adc2.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc2.cr.modify(|_, w| w.adcal().set_bit());
-        adc3.cr.modify(|_, w| w.aden().clear_bit());
-        adc3.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc3.cr.modify(|_, w| w.adcal().set_bit());
-        adc4.cr.modify(|_, w| w.aden().clear_bit());
-        adc4.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc4.cr.modify(|_, w| w.adcal().set_bit());
-        adc5.cr.modify(|_, w| w.aden().clear_bit());
-        adc5.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc5.cr.modify(|_, w| w.adcal().set_bit());
-        // Wait for it to complete
-        block_until!(adc1.cr.read().adcal().bit_is_clear());
-        block_until!(adc2.cr.read().adcal().bit_is_clear());
-        block_until!(adc3.cr.read().adcal().bit_is_clear());
-        block_until!(adc4.cr.read().adcal().bit_is_clear());
-        block_until!(adc5.cr.read().adcal().bit_is_clear());
-
-        // Check that we're ready, enable, and wait for ready state. Initial adrdy.set_bit is to
-        // ensure it's cleared.
-        adc1.isr.modify(|_, w| w.adrdy().set_bit());
-        adc1.cr.modify(|_, w| w.aden().set_bit());
-        adc2.isr.modify(|_, w| w.adrdy().set_bit());
-        adc2.cr.modify(|_, w| w.aden().set_bit());
-        adc3.isr.modify(|_, w| w.adrdy().set_bit());
-        adc3.cr.modify(|_, w| w.aden().set_bit());
-        adc4.isr.modify(|_, w| w.adrdy().set_bit());
-        adc4.cr.modify(|_, w| w.aden().set_bit());
-        adc5.isr.modify(|_, w| w.adrdy().set_bit());
-        adc5.cr.modify(|_, w| w.aden().set_bit());
-        // Wait for ready
-        block_until!(adc1.isr.read().adrdy().bit_is_set());
-        block_until!(adc2.isr.read().adrdy().bit_is_set());
-        block_until!(adc3.isr.read().adrdy().bit_is_set());
-        block_until!(adc4.isr.read().adrdy().bit_is_set());
-        block_until!(adc5.isr.read().adrdy().bit_is_set());
-        // Clear ready, for good measure.
-        adc1.isr.modify(|_, w| w.adrdy().set_bit());
-        adc2.isr.modify(|_, w| w.adrdy().set_bit());
-        adc3.isr.modify(|_, w| w.adrdy().set_bit());
-        adc4.isr.modify(|_, w| w.adrdy().set_bit());
-        adc5.isr.modify(|_, w| w.adrdy().set_bit());
-
-        // Configure channels
-
-        // ADC[123] - Current sense amplifiers. Single channel inputs, and triggered by `tim_trgo2`.
-        adc1.cr.modify(|_, w| w.adstart().clear_bit());
-        adc2.cr.modify(|_, w| w.adstart().clear_bit());
-        adc3.cr.modify(|_, w| w.adstart().clear_bit());
-        // Note that L=0 implies 1 conversion.
-        // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
-        // long as it's 0-16 for L and 0-18 for SQx, we should be good.
-        adc1.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(2) });
-        adc2.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(1) });
-        adc3.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(1) });
-        // Fastest sample time we can, since there should be little-to-no resistance coming in from
-        // the DRV current sense amplifier.
-        adc1.smpr1.modify(|_, w| w.smp2().cycles2_5());
-        adc2.smpr1.modify(|_, w| w.smp1().cycles2_5());
-        adc3.smpr1.modify(|_, w| w.smp1().cycles2_5());
-        // 12-bit non-continuous conversion (triggered).
-        adc1.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .exten()
-                .rising_edge()
-                .extsel()
-                .tim1_trgo2()
-                .align()
-                .right()
-                .cont()
-                .single()
-                .discen()
-                .disabled()
-                .ovrmod()
-                .overwrite()
-        });
-        adc2.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .exten()
-                .rising_edge()
-                .extsel()
-                .tim1_trgo2()
-                .align()
-                .right()
-                .cont()
-                .single()
-                .discen()
-                .disabled()
-                .ovrmod()
-                .overwrite()
-        });
-        adc3.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .exten()
-                .rising_edge()
-                .extsel()
-                .tim1_trgo2()
-                .align()
-                .right()
-                .cont()
-                .single()
-                .discen()
-                .disabled()
-                .ovrmod()
-                .overwrite()
-        });
-        // Enable interrupt on ADC1 EOS. Only needed for ADC1, since 2 and 3 are sync'd to the same
-        // tim_trgo2.
-        adc1.ier.modify(|_, w| w.eosie().enabled());
-        // Start sampling.
-        adc1.cr.modify(|_, w| w.adstart().set_bit());
-        adc2.cr.modify(|_, w| w.adstart().set_bit());
-        adc3.cr.modify(|_, w| w.adstart().set_bit());
-
-        // ADC4
-        // ADC4 only uses a single channel: IN3
-        // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
-        // long as it's 0-16 for L and 0-18 for SQx, we should be good.
-        adc4.cr.modify(|_, w| w.adstart().clear_bit());
-        adc4.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(3) });
-        // There's quite a bit of input resistance on the Vbus line. Datasheet suggests 39kOhm is
-        // the upper limit for 60MHz sampling. We're using 42.5 and doing a single channel, so we
-        // should be somewhat clear sampling for longer.
-        adc4.smpr1.modify(|_, w| w.smp3().cycles640_5());
-        // Set 12-bit continuous conversion mode with right-data-alignment, and ensure that no
-        // hardware trigger is used. Also set overrun mode to allow overwrites of the data register,
-        // otherwise it'll pause after one.
-        adc4.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .cont()
-                .continuous()
-                .align()
-                .right()
-                .exten()
-                .disabled()
-                .ovrmod()
-                .overwrite()
-        });
-        // Here goes nothin'... start it up.
-        adc4.cr.modify(|_, w| w.adstart().set_bit());
-
-        // ADC5 - Similar to ADC4 above, but using IN18
-        adc5.cr.modify(|_, w| w.adstart().clear_bit());
-        adc5.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(18) });
-        adc5.smpr2.modify(|_, w| w.smp18().cycles640_5());
-        adc5.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .cont()
-                .set_bit()
-                .align()
-                .right()
-                .exten()
-                .disabled()
-                .ovrmod()
-                .overwrite()
-        });
-        adc5.cr.modify(|_, w| w.adstart().set_bit());
-    }
-
-    pub fn configure_peripherals<'a>(self) -> Controller<Ready> {
-        self.configure_gpio();
-        self.configure_timers();
-        self.configure_adcs();
-
-        let ma702 = ma702::new(self.mode_state.spi1)
-            .configure_spi()
-            .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
-
-        let gpioc = &self.mode_state.gpioc;
-        let drv = drv8323rs::new(self.mode_state.spi3)
-            .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
-            .calibrate();
+        let current_sensor = current_sensing::new(
+            self.mode_state.adc1,
+            self.mode_state.adc2,
+            self.mode_state.adc3,
+            self.mode_state.adc4,
+            self.mode_state.adc5,
+        )
+        .configure_phase_sensing()
+        .configure_v_refint()
+        .configure_v_bus(V_BUS_GAIN)
+        .calibrate(100000);
 
         // Configure FDCAN
         let fdcan = fdcan::take(self.mode_state.fdcan)
@@ -876,13 +639,7 @@ impl Controller<Init> {
                 drv,
                 gpioa: self.mode_state.gpioa,
                 tim1: self.mode_state.tim1,
-                current_sensor: current_sensing::new(
-                    self.mode_state.adc1,
-                    self.mode_state.adc2,
-                    self.mode_state.adc3,
-                    self.mode_state.adc4,
-                    self.mode_state.adc5,
-                ),
+                current_sensor,
             },
         };
         new_self
