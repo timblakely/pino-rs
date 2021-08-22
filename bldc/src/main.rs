@@ -59,6 +59,8 @@ fn main() -> ! {
                 .tim1
                 .ccr4
                 .write(|w| unsafe { w.ccr4().bits(CCR_2V) });
+
+            let foo = hardware.current_sensor.get_v_refint();
             match hardware.square_wave_state {
                 0 => {
                     // Switching states

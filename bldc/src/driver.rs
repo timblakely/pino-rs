@@ -1,5 +1,7 @@
 use crate::comms::fdcan::FdcanMessage;
 use crate::commutation::{ControlParameters, Hardware};
+use crate::current_sensing::{self, CurrentSensor};
+use crate::ic::drv8323rs::registers::csa::CurrentSenseAmplifier;
 use crate::util::buffered_state::{BufferedState, StateReader};
 use crate::util::stm32::{
     blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
@@ -51,13 +53,7 @@ pub struct Ready {
     pub drv: Drv8323rs<drv8323rs::Ready>,
     pub gpioa: device::GPIOA,
     pub tim1: device::TIM1,
-    pub adcs: (
-        device::ADC1,
-        device::ADC2,
-        device::ADC3,
-        device::ADC4,
-        device::ADC5,
-    ),
+    pub current_sensor: CurrentSensor,
 }
 
 pub fn take_hardware() -> Controller<Init> {
@@ -880,7 +876,7 @@ impl Controller<Init> {
                 drv,
                 gpioa: self.mode_state.gpioa,
                 tim1: self.mode_state.tim1,
-                adcs: (
+                current_sensor: current_sensing::new(
                     self.mode_state.adc1,
                     self.mode_state.adc2,
                     self.mode_state.adc3,
@@ -927,7 +923,7 @@ impl Controller<Ready> {
                 Hardware {
                     tim1: self.mode_state.tim1,
                     ma702: self.mode_state.ma702,
-                    adcs: self.mode_state.adcs,
+                    current_sensor: self.mode_state.current_sensor,
                     sign: -1.,
                     square_wave_state: 0,
                 },
