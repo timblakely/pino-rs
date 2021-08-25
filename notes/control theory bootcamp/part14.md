@@ -12,4 +12,4 @@ Again, more Matlab
   - Idea 2: you can cook up some kind of cost function on how expensive it is to actuate $u$
     - Example: energy is cheap and abundant, so allow for large $u$; you're on battery or can't actuate very hard with a tiny motor, so ensure small $u$ (usually)
 - LQR optimizes a cost function that is the combination of the above ideas
-  -
+  - $J=\int_{0}^{\infin}\left(x^TQx + u^TRu\right)dt$
