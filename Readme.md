@@ -22,7 +22,7 @@ resources:
 
 ## Why rust?
 
-I originally started the controller in C++, but found myself spending more and more time thinking about the language implementation, template metaprogramming, and wrestling with the inability to `constexpr` a raw address (can't `reinterpret_cast<Foo>` an address in a `constexpr`...), and less time on the actual controller itself. That's when I stumbled on Cliff Biffle's post with the contentious title "[Prefer Rust to C/++ for new code](http://cliffle.com/blog/prefer-rust/)". He posits that Rust was ready to replace C++ in most-if-not-all situations, _and that was back in 2019_. That post single-handedly convinced me to try out Rust, and I haven't looked back since.
+I originally started the controller in C++, but found myself spending more and more time thinking about the language implementation, template metaprogramming, and wrestling with the inability to `constexpr` a raw address (can't `reinterpret_cast<Foo>` an address in a `constexpr`, but [don't take my word for it](https://www.youtube.com/watch?v=uwzuAGtAEFk&t=1217s)...), and less time on the actual controller itself. That's when I stumbled on Cliff Biffle's post with the contentious title "[Prefer Rust to C/++ for new code](http://cliffle.com/blog/prefer-rust/)". He posits that Rust was ready to replace C++ in most-if-not-all situations, _and that was back in 2019_. That post single-handedly convinced me to try out Rust, and I haven't looked back since.
 
 ## Building it
 
