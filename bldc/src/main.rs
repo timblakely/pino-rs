@@ -1,82 +1,89 @@
 #![no_std]
 #![no_main]
+#![feature(unboxed_closures, fn_traits)]
 
-use bldc::driver;
-use ringbuffer::RingBufferRead;
-use stm32g4::stm32g474::{self as device, interrupt};
-use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
+use bldc::{comms::messages::Messages, commutation::ControlParameters, driver};
 
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 #[cfg(feature = "panic-itm")]
 use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 
+// TODO(blakely): Implement emergency stop.
+fn emergency_stop() {}
+
 // TODO(blakely): Comment on all the stuff that happens before we actually get
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    let initial_state = ControlParameters {
+        pwm_duty: 0f32,
+        q: 0f32,
+        d: 0f32,
+    };
+
     let controller = driver::take_hardware().configure_peripherals();
 
-    loop {
-        // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from firing - the
-        // only other interrupt that shares this particular buffer - ensuring we aren't preempted
-        // when reading from it. This is fine in general since the peripheral itself has an internal
-        // buffer, and as long as we can clear the backlog before the peripheral receives 4 requests
-        // we should be good.
-        // Alternatively, we could just process a single message here to make sure that we only hold
-        // this lock for the absolute minimum time, since there's an internal buffer in the FDCAN.
-        // Bad form though...
-        // TODO(blakely): Move into the FDCAN device code and leverage the "token" strategy to
-        // ensure that this can only be called from the main thread.
-        bldc::util::interrupts::free_from(
-            device::interrupt::FDCAN1_INTR1_IT,
-            &FDCAN_RECEIVE_BUF,
-            |mut buf| {
-                while let Some(message) = buf.dequeue_ref() {
-                    let _asdf = message;
+    // TODO(blakely): Figure out why it's UB to capture stack variables in the control loop
+
+    controller.run(
+        initial_state,
+        |message, control_params| {
+            match Messages::unpack_fdcan(message) {
+                Some(Messages::ForcePwm(msg)) => control_params.pwm_duty = msg.pwm_duty,
+                Some(Messages::EStop(_)) => emergency_stop(),
+                Some(Messages::SetCurrents(msg)) => {
+                    control_params.q = msg.q;
+                    control_params.d = msg.d;
                 }
-            },
-        );
-        let angle = controller.mode_state.ma702.angle();
-        let _asdf = angle;
-    }
-}
+                _ => {}
+            };
+        },
+        // Control loop
+        |hardware, _control_params| {
+            // This is called at 40kHz, and where any commutation happens.
+            // let new_arr: u16 = ((control_params.pwm_duty * 2125_f32) as u16).min(80).max(0);
+            // if new_arr <= 80 {
+            //     hardware.tim1.ccr1.write(|w| w.ccr1().bits(new_arr));
+            // }
 
-use bldc::comms::fdcan::FDCAN_RECEIVE_BUF;
+            const CALIB_PWM_DUTY: f32 = 2. / 24.;
+            const CCR_2V: u16 = (CALIB_PWM_DUTY * 2125.) as u16;
+            // Set CH4 to be PWM2, or opposite polarity of the other timer channels.
+            hardware
+                .tim1
+                .ccmr2_output()
+                .modify(|_, w| w.oc4m().pwm_mode2());
+            // Set ADC trigger time relative to PWM pulse.
+            hardware.tim1.ccr4.write(|w| w.ccr4().bits(CCR_2V));
 
-#[interrupt]
-fn FDCAN1_INTR0_IT() {
-    bldc::comms::fdcan::fdcan1_tx_isr();
-    clear_pending_irq(device::Interrupt::FDCAN1_INTR0_IT);
-}
+            let _foo = hardware.current_sensor.sample();
 
-#[interrupt]
-fn FDCAN1_INTR1_IT() {
-    bldc::comms::fdcan::fdcan1_rx_isr();
-    clear_pending_irq(device::Interrupt::FDCAN1_INTR1_IT);
-}
-
-#[interrupt]
-fn ADC1_2() {
-    // Main control loop.
-    unsafe {
-        *(0x4800_0418 as *mut u32) = 1 << 9;
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
-    }
-    // HACK HACK HACK: Clear EOS for ADC 1
-    unsafe {
-        *(0x5000_0000 as *mut u32) = 1 << 3;
-    }
-    // TODO(blakely): actually do any semblance of control :P
-    clear_pending_irq(device::Interrupt::ADC1_2);
+            match hardware.square_wave_state {
+                0 => {
+                    // Switching states
+                    hardware.sign = -hardware.sign;
+                    hardware.square_wave_state += 1;
+                }
+                _ => {
+                    hardware.square_wave_state += 1;
+                    if hardware.square_wave_state >= 4 {
+                        hardware.square_wave_state = 0;
+                    }
+                }
+            };
+            if hardware.sign < 0. {
+                // Set A high and B and C low
+                hardware.tim1.ccr1.write(|w| w.ccr1().bits(CCR_2V));
+                hardware.tim1.ccr2.write(|w| w.ccr2().bits(0));
+                hardware.tim1.ccr3.write(|w| w.ccr3().bits(0));
+            } else {
+                // Set A high and B and C low
+                hardware.tim1.ccr1.write(|w| w.ccr1().bits(0));
+                hardware.tim1.ccr2.write(|w| w.ccr2().bits(CCR_2V));
+                hardware.tim1.ccr3.write(|w| w.ccr3().bits(CCR_2V));
+            }
+        },
+    );
+    loop {}
 }

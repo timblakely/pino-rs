@@ -1,31 +1,31 @@
+use crate::comms::fdcan::FdcanMessage;
+use crate::commutation::{ControlParameters, Hardware};
+use crate::current_sensing::{self, CurrentSensor};
+use crate::util::buffered_state::{BufferedState, StateReader};
 use crate::util::stm32::{
-    blocking_sleep_us, clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd,
+    clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
 use crate::{
     block_until,
-    comms::fdcan::{self, Sram, FDCANSHARE},
+    comms::fdcan::{self, Sram, FDCANSHARE, FDCAN_RECEIVE_BUF},
 };
 use crate::{
     block_while,
     ic::drv8323rs,
     ic::ma702::{self, Ma702, Streaming},
 };
-use core::cell::RefCell;
 use cortex_m::peripheral as cm;
-use drv8323rs::{Drv8323rs, DrvState};
+use drv8323rs::Drv8323rs;
 use fixed::types::I1F31;
-use stm32g4::stm32g474 as device;
-use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
+use ringbuffer::RingBufferRead;
+use stm32g4::stm32g474::{self as device, interrupt};
+use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, disable_irq, enable_irq};
+use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
+
+const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
 pub struct Controller<S> {
     pub mode_state: S,
-    syst: RefCell<device::SYST>,
-}
-
-impl<S> Controller<S> {
-    pub fn blocking_sleep_us(&self, us: u32) {
-        blocking_sleep_us(&mut self.syst.try_borrow_mut().unwrap(), us);
-    }
 }
 
 pub struct Init {
@@ -41,21 +41,28 @@ pub struct Init {
     pub dmamux: device::DMAMUX,
     pub adc12: device::ADC12_COMMON,
     pub adc1: device::ADC1,
+    pub adc2: device::ADC2,
     pub adc345: device::ADC345_COMMON,
+    pub adc3: device::ADC3,
     pub adc4: device::ADC4,
     pub adc5: device::ADC5,
     pub cordic: device::CORDIC,
 }
 
-pub struct Ready<D: DrvState> {
+pub struct Ready {
     pub ma702: Ma702<Streaming>,
-    pub drv: Drv8323rs<D>,
+    pub drv: Drv8323rs<drv8323rs::Ready>,
     pub gpioa: device::GPIOA,
+    pub tim1: device::TIM1,
+    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
 }
 
 pub fn take_hardware() -> Controller<Init> {
     let cp = cm::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();
+
+    // Donate the SYST peripheral to the blocking sleep handler so it's available anywhere.
+    donate_systick(cp.SYST);
 
     init(
         cp.NVIC,
@@ -74,11 +81,12 @@ pub fn take_hardware() -> Controller<Init> {
         p.DMAMUX,
         p.ADC12_COMMON,
         p.ADC1,
+        p.ADC2,
         p.ADC345_COMMON,
+        p.ADC3,
         p.ADC4,
         p.ADC5,
         p.CORDIC,
-        cp.SYST,
     )
 }
 
@@ -99,11 +107,12 @@ fn init(
     dmamux: device::DMAMUX,
     adc12: device::ADC12_COMMON,
     adc1: device::ADC1,
+    adc2: device::ADC2,
     adc345: device::ADC345_COMMON,
+    adc3: device::ADC3,
     adc4: device::ADC4,
     adc5: device::ADC5,
     cordic: device::CORDIC,
-    syst: device::SYST,
 ) -> Controller<Init> {
     disable_dead_battery_pd(&pwr);
 
@@ -181,19 +190,20 @@ fn init(
             dmamux,
             adc12,
             adc1,
+            adc2,
             adc345,
+            adc3,
             adc4,
             adc5,
             cordic,
         },
-        syst: RefCell::new(syst),
     }
 }
 
 impl Controller<Init> {
     // TODO(blakely): Move into a device-specific, feature-guarded trait
     fn configure_gpio(&self) {
-        // TODO(blakely): Implement split-borrowing ro allow devices to take their own pins.
+        // TODO(blakely): Implement split-borrowing to allow devices to take their own pins.
         // Configure GPIOA pins
         // PA0 - ADC2_IN1 - SENSE_B
         // PA1 - ADC1_IN2 - SENSE_A
@@ -498,21 +508,11 @@ impl Controller<Init> {
         // up/down count cycle.
         // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
         tim1.rcr.write(|w| unsafe { w.rep().bits(1) });
-        // TODO(blakely): Actually use these in the control loop, but for now just set them to some
-        // reasonable values.
-        // HACK HACK HACK - Disabled for testing with ADC timing
-        // tim1.ccr1.write(|w| w.ccr1().bits(2125));
-        // tim1.ccr2.write(|w| w.ccr2().bits(1000));
-        // tim1.ccr3.write(|w| w.ccr3().bits(2083));
-        tim1.ccr1.write(|w| w.ccr1().bits(2125));
+        tim1.ccr1.write(|w| w.ccr1().bits(0));
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
         // Set channel 4 to trigger _just_ before the midway point.
         tim1.ccr4.write(|w| w.ccr4().bits(2124));
-        // Enable master output. If this isn't set, the timer doesn't actually start when enabled.
-        // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
-        // Enable master output bit.
-        tim1.bdtr.modify(|_, w| w.moe().set_bit());
         // Set ch5 to PWM mode and enable it.
         // Safety: Upstream: needs enum values. PWM mode 1 is 0110.
         tim1.ccmr3_output
@@ -534,42 +534,20 @@ impl Controller<Init> {
         });
     }
 
-    fn configure_adcs(&self) {
-        let adc1 = &self.mode_state.adc1;
-        let adc4 = &self.mode_state.adc4;
-        let adc5 = &self.mode_state.adc5;
-        // Begin in a sane state.
-        adc1.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
-        adc4.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
-        adc5.cr.modify(|_, w| {
-            w.adcal()
-                .clear_bit()
-                .aden()
-                .clear_bit()
-                .adstart()
-                .clear_bit()
-                .advregen()
-                .clear_bit()
-        });
+    pub fn configure_peripherals<'a>(self) -> Controller<Ready> {
+        self.configure_gpio();
+        self.configure_timers();
 
+        let ma702 = ma702::new(self.mode_state.spi1)
+            .configure_spi()
+            .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
+
+        let gpioc = &self.mode_state.gpioc;
+        let drv = drv8323rs::new(self.mode_state.spi3)
+            .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
+            .calibrate();
+
+        // Set up current sensing.
         // Set up the ADC clocks. We're assuming we're running on a 170MHz AHB bus, so div=4 gives
         // us 42.5MHz (below max freq of 60MHz for single or 52MHz for multiple channels).
         self.mode_state
@@ -583,171 +561,20 @@ impl Controller<Init> {
                 .vrefen()
                 .set_bit()
         });
-
-        // Wake from deep power down, enable ADC voltage regulator, and set single-ended input mode.
-        adc1.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-        adc4.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-        adc5.cr
-            .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
-
-        // Allow voltage regulators to warm up. Datasheet says 20us max.
-        self.blocking_sleep_us(20);
-
-        // Begin calibration
-        // Can probably combine these modifies, but kept separate in case the clear bit has to be
-        // set first.
-        adc1.cr.modify(|_, w| w.aden().clear_bit());
-        adc1.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc1.cr.modify(|_, w| w.adcal().set_bit());
-        adc4.cr.modify(|_, w| w.aden().clear_bit());
-        adc4.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc4.cr.modify(|_, w| w.adcal().set_bit());
-        adc5.cr.modify(|_, w| w.aden().clear_bit());
-        adc5.cr.modify(|_, w| w.adcaldif().single_ended());
-        adc5.cr.modify(|_, w| w.adcal().set_bit());
-        // Wait for it to complete
-        block_until!(adc1.cr.read().adcal().bit_is_clear());
-        block_until!(adc4.cr.read().adcal().bit_is_clear());
-        block_until!(adc5.cr.read().adcal().bit_is_clear());
-
-        // Check that we're ready, enable, and wait for ready state. Initial adrdy.set_bit is to
-        // ensure it's cleared.
-        adc1.isr.modify(|_, w| w.adrdy().set_bit());
-        adc1.cr.modify(|_, w| w.aden().set_bit());
-        adc4.isr.modify(|_, w| w.adrdy().set_bit());
-        adc4.cr.modify(|_, w| w.aden().set_bit());
-        adc5.isr.modify(|_, w| w.adrdy().set_bit());
-        adc5.cr.modify(|_, w| w.aden().set_bit());
-        // Wait for ready
-        block_until!(adc1.isr.read().adrdy().bit_is_set());
-        block_until!(adc4.isr.read().adrdy().bit_is_set());
-        block_until!(adc5.isr.read().adrdy().bit_is_set());
-        // Clear ready, for good measure.
-        adc1.isr.modify(|_, w| w.adrdy().set_bit());
-        adc4.isr.modify(|_, w| w.adrdy().set_bit());
-        adc5.isr.modify(|_, w| w.adrdy().set_bit());
-
-        // Configure channels
-
-        // ADC[123] - Current sense amplifiers. Single channel inputs, and triggered by `tim_trgo2`.
-        adc1.cr.modify(|_, w| w.adstart().clear_bit());
-        // Note that L=0 implies 1 conversion.
-        // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
-        // long as it's 0-16 for L and 0-18 for SQx, we should be good.
-        adc1.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(2) });
-        // Fastest sample time we can, since there should be little-to-no resistance coming in from
-        // the DRV current sense amplifier.
-        adc1.smpr1.modify(|_, w| w.smp2().cycles2_5());
-        // 12-bit non-continuous conversion (triggered).
-        adc1.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .exten()
-                .rising_edge()
-                .extsel()
-                .tim1_trgo2()
-                .align()
-                .right()
-                .cont()
-                .single()
-                .discen()
-                .disabled()
-                .ovrmod()
-                .preserve()
-        });
-        // Enable interrupt on ADC1 EOS
-        adc1.ier.modify(|_, w| w.eosie().enabled());
-        // Start sampling.
-        adc1.cr.modify(|_, w| w.adstart().set_bit());
-
-        // ADC4
-        // ADC4 only uses a single channel: IN3
-        // Safety: SVD doesn't have valid range for this, so we're "arbitrarily setting bits". As
-        // long as it's 0-16 for L and 0-18 for SQx, we should be good.
-        adc4.cr.modify(|_, w| w.adstart().clear_bit());
-        adc4.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(3) });
-        // There's quite a bit of input resistance on the Vbus line. Datasheet suggests 39kOhm is
-        // the upper limit for 60MHz sampling. We're using 42.5 and doing a single channel, so we
-        // should be somewhat clear sampling for longer.
-        adc4.smpr1.modify(|_, w| w.smp3().cycles640_5());
-        // Set 12-bit continuous conversion mode with right-data-alignment, and ensure that no
-        // hardware trigger is used. Also set overrun mode to allow overwrites of the data register,
-        // otherwise it'll pause after one.
-        adc4.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .cont()
-                .set_bit()
-                .align()
-                .right()
-                .exten()
-                .disabled()
-                .ovrmod()
-                .overwrite()
-        });
-        // Here goes nothin'... start it up.
-        adc4.cr.modify(|_, w| w.adstart().set_bit());
-
-        // ADC5 - Similar to ADC4 above, but using IN18
-        adc5.cr.modify(|_, w| w.adstart().clear_bit());
-        adc5.sqr1
-            .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(18) });
-        adc5.smpr2.modify(|_, w| w.smp18().cycles640_5());
-        adc5.cfgr.modify(|_, w| {
-            w.res()
-                .bits12()
-                .cont()
-                .set_bit()
-                .align()
-                .right()
-                .exten()
-                .disabled()
-                .ovrmod()
-                .overwrite()
-        });
-        adc5.cr.modify(|_, w| w.adstart().set_bit());
-    }
-
-    pub fn configure_peripherals<'a>(self) -> Controller<Ready<impl DrvState>> {
-        self.configure_gpio();
-        self.configure_timers();
-        self.configure_adcs();
-
-        let ma702 = ma702::new(self.mode_state.spi1)
-            .configure_spi()
-            .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
-
-        let gpioc = &self.mode_state.gpioc;
-        let drv =
-            drv8323rs::new(self.mode_state.spi3).enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()));
-
-        // Configure DRV8323RS.
-        use drv8323rs::registers::*;
-        drv.control_register().update(|_, w| {
-            w.pwm_mode()
-                .variant(PwmMode::Pwm3x)
-                .clear_latched_faults()
-                .set_bit()
-        });
-        drv.current_sense().update(|_, w| {
-            w.vref_divisor()
-                .variant(CsaDivisor::Two)
-                .current_sense_gain()
-                .variant(CsaGain::V40)
-                .sense_level()
-                .variant(SenseOcp::V1)
-        });
-
-        // HACK HACK HACK
-        // Disable drv for now while we work on TIM1. Don't want to accidentally short anything.
-        let drv = drv.disable(|| gpioc.bsrr.write(|w| w.br6().set_bit()));
+        let current_sensor = current_sensing::new(
+            self.mode_state.adc1,
+            self.mode_state.adc2,
+            self.mode_state.adc3,
+            self.mode_state.adc4,
+            self.mode_state.adc5,
+        )
+        .configure_phase_sensing()
+        .configure_v_refint()
+        .configure_v_bus(V_BUS_GAIN)
+        .calibrate(100000);
 
         // Configure FDCAN
-        let mut fdcan = fdcan::take(self.mode_state.fdcan)
+        let fdcan = fdcan::take(self.mode_state.fdcan)
             .enter_init()
             // TODO(blakely): clean up this API.
             .set_extended_filter(
@@ -762,7 +589,6 @@ impl Controller<Init> {
             .configure_interrupts()
             .fifo_mode()
             .start();
-        fdcan.send_message();
         *FDCANSHARE.try_lock().unwrap() = Some(fdcan.donate());
 
         fdcan::init_receive_buf();
@@ -774,19 +600,16 @@ impl Controller<Init> {
         // ADC1 IRQ
         enable_irq(device::Interrupt::ADC1_2);
 
-        // Kick off tim1.
-        self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
         // Kick off tim3.
         self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
-        // TODO(blakely): Move this into the commutation code.
         let cordic = self.mode_state.cordic;
         // Safety: yet another SVD range missing. Valid ranges for precision is 1-15
         cordic.csr.modify(|_, w| unsafe {
             w.func()
                 .cosine()
                 .precision()
-                // 20 iterations / 4 = 5
+                // 20 iterations / 4 = 5 cycles
                 .bits(5)
                 .nres()
                 .num2()
@@ -797,6 +620,8 @@ impl Controller<Init> {
                 .argsize()
                 .bits32()
         });
+
+        // TODO(blakely): Move this into the commutation code.
         // Try it out
         // Note that the input to the CORDIC is theta/pi. Kinda nice in a way...
         let pi_over_3: I1F31 = I1F31::from_num(1f32 / 3f32);
@@ -809,15 +634,136 @@ impl Controller<Init> {
         let _sin: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
 
         let new_self = Controller {
-            syst: self.syst,
             mode_state: Ready {
                 ma702,
                 drv,
                 gpioa: self.mode_state.gpioa,
+                tim1: self.mode_state.tim1,
+                current_sensor,
             },
         };
         new_self
     }
+}
+
+static CONTROL: third_party::m4vga_rs::util::iref::IRef<(&mut Hardware, &ControlParameters)> =
+    third_party::m4vga_rs::util::iref::IRef::new();
+static COMMUTATION_SHARED: SpinLock<Option<(Hardware, StateReader<ControlParameters>)>> =
+    SpinLock::new(None);
+static COMMS_SHARED: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
+
+// TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
+impl Controller<Ready> {
+    pub fn run(
+        self,
+        initial_state: ControlParameters,
+        mut comms_handler: impl FnMut(&FdcanMessage, &mut ControlParameters),
+        mut commutation_impl: impl FnMut(&mut Hardware, &ControlParameters) + Send,
+    ) {
+        // Since the interrupt handler can interrupt the main thread's modifications of any shared
+        // state, we use a double-buffer and atomic swap to ensure a full update.
+        *COMMS_SHARED.try_lock().unwrap() =
+            Some(BufferedState::<ControlParameters>::new(initial_state));
+        // Split the two states into a read-only control state that has read priority, and a mutable
+        // state used for communication that writes the unused state and atomically swaps on
+        // completion.
+        let mut shared_state = SpinLockGuard::map(
+            COMMS_SHARED.try_lock().expect("Shared state lock held"),
+            |o| o.as_mut().expect("Shared state not initialized"),
+        );
+        let (control_params, mut comms_params) = shared_state.split();
+
+        // Pass off both the control parameters and hardware to the commutation interrupt handler.
+        {
+            let mut shared = COMMUTATION_SHARED.lock();
+            *shared = Some((
+                Hardware {
+                    tim1: self.mode_state.tim1,
+                    ma702: self.mode_state.ma702,
+                    current_sensor: self.mode_state.current_sensor,
+                    sign: -1.,
+                    square_wave_state: 0,
+                },
+                control_params,
+            ));
+        }
+        // We don't want the timer to fire while we've got this lock, so disable the interrupt while
+        // we're starting it up.
+        crate::util::interrupts::free_from(
+            device::interrupt::ADC1_2,
+            &COMMUTATION_SHARED,
+            |shared| {
+                let (hardware, _) = &*shared;
+                // Kick off tim1.
+                hardware.tim1.cr1.modify(|_, w| w.cen().set_bit());
+                // Now that the timer has started, enable the main output to allow current on the pins. If
+                // we do this before we enable the time, we have the potential to get into a state where the
+                // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+                // current through the high phase to any low phases.
+                hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+            },
+        );
+
+        //
+
+        // This is where the fun starts. We've got the commutation function here in the main loop,
+        // but we've got to send it to the interrupt handler. Callbacks are fat pointers, and so far
+        // you're only allowed to store trait objects (`dyn FnMut`) in `Box`es. We're getting around
+        // that by donating it to an `IRef` thats' accessible from the ADC1_2 interrupt handler. The
+        // way `IRef` works is that it donates the reference only as long as the `scope` parameter
+        // is not finished. Once `scope` returns, it will wait for any observers to complete then to
+        // the empty state.
+        CONTROL.donate(&mut commutation_impl, || {
+            loop {
+                // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from
+                // firing - the only other interrupt that shares this particular buffer - ensuring
+                // we aren't preempted when reading from it. This is fine in general since the
+                // peripheral itself has an internal buffer, and as long as we can clear the backlog
+                // before the peripheral receives 4 requests we should be good. Alternatively, we
+                // could just process a single message here to make sure that we only hold this lock
+                // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
+                // form though...
+                crate::util::interrupts::free_from(
+                    device::interrupt::FDCAN1_INTR1_IT,
+                    &FDCAN_RECEIVE_BUF,
+                    |mut buf| {
+                        while let Some(message) = buf.dequeue_ref() {
+                            comms_handler(&message, &mut comms_params.update());
+                        }
+                    },
+                );
+            }
+        });
+    }
+}
+
+#[interrupt]
+fn ADC1_2() {
+    // Main control loop.
+    unsafe {
+        *(0x4800_0418 as *mut u32) = 1 << 9;
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
+    }
+    // HACK HACK HACK: Clear EOS for ADC 1
+    unsafe {
+        *(0x5000_0000 as *mut u32) = 1 << 3;
+    }
+    let (hardware, control_parameters) = &mut *SpinLockGuard::map(
+        COMMUTATION_SHARED.try_lock().expect("adc interrupt lock"),
+        |o| o.as_mut().expect("Control params not set"),
+    );
+    CONTROL.observe(|r| r(hardware, control_parameters.read()));
+    clear_pending_irq(device::Interrupt::ADC1_2);
 }
 
 pub struct FdcanShared {

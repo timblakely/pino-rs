@@ -7,7 +7,8 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
-use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A};
+use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
+use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
 pub mod extended_filter;
@@ -248,45 +249,8 @@ impl Fdcan<Init> {
     }
 }
 
-pub trait StandardFdcanFrame {
-    fn id(&self) -> u16;
-    fn pack(&self, buffer: &mut [u32; 2]) -> u8;
-}
-pub trait ExtendedFdcanFrame {
-    fn id(&self) -> u32;
-    fn pack(&self, buffer: &mut [u32; 16]) -> u8;
-}
-
-// Just for testing; do not use in regular communication.
-struct DebugMessage {
-    foo: u32,
-    bar: f32,
-    baz: u8,
-    toot: &'static [u8; 3],
-}
-impl ExtendedFdcanFrame for DebugMessage {
-    fn id(&self) -> u32 {
-        0xA
-    }
-    fn pack(&self, buffer: &mut [u32; 16]) -> u8 {
-        buffer[0] = self.foo;
-        buffer[1] = self.bar.to_bits();
-        buffer[2] = (self.baz as u32) << 24
-            | (self.toot[2] as u32) << 16
-            | (self.toot[1] as u32) << 8
-            | (self.toot[0] as u32);
-        3
-    }
-}
-
 impl Fdcan<Running> {
-    pub fn send_message(&mut self) -> &mut Self {
-        let message = DebugMessage {
-            foo: 123,
-            bar: 77.44,
-            baz: 8,
-            toot: b"ASD",
-        };
+    pub fn send_message(&mut self, message: FdcanMessage) -> &mut Self {
         match self.next_tx() {
             Some(idx) => {
                 self.sram.tx_buffers[idx].assign(&message);
@@ -317,7 +281,7 @@ impl Fdcan<Running> {
     }
 }
 
-pub fn fdcan1_tx_isr() {
+fn fdcan1_tx_isr() {
     let fdcan = &sync::acquire_hw(&FDCANSHARE).fdcan;
     let get_idx = fdcan.txefs.read().efgi().bits();
     // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
@@ -329,7 +293,7 @@ pub fn fdcan1_tx_isr() {
     fdcan.ir.modify(|_, w| w.tfe().set_bit().tefn().set_bit());
 }
 
-pub fn fdcan1_rx_isr() {
+fn fdcan1_rx_isr() {
     let shared = &sync::acquire_hw(&FDCANSHARE);
 
     // Figure out get index
@@ -344,9 +308,10 @@ pub fn fdcan1_rx_isr() {
             .as_mut()
             .expect("FDCAN RX ISR handled prior to populating buffer");
         let rx_buffer = &shared.sram.rx_fifo0[get_idx as usize];
-        (*receive_buf).push(ReceivedMessage {
+        (*receive_buf).push(FdcanMessage {
             id: rx_buffer.id(),
             data: *rx_buffer.data(),
+            size: rx_buffer.len(),
         });
     }
     // Acknowledge the peripheral that we've read the message.
@@ -361,12 +326,28 @@ pub fn fdcan1_rx_isr() {
 }
 
 #[derive(Debug)]
-pub struct ReceivedMessage {
+pub struct FdcanMessage {
     pub id: u32,
     pub data: [u32; 16],
+    pub size: u8,
 }
 
-type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<ReceivedMessage, 16>;
+impl FdcanMessage {
+    pub fn new<const T: usize>(id: u32, data: [u32; T]) -> FdcanMessage {
+        // There's no real idiomatic way to zero-initialize-and-fill-in-up-to-length in Rust as of
+        // Aug '21.
+        let mut message = FdcanMessage {
+            id,
+            data: [0; 16],
+            size: T as u8,
+        };
+        let len = T.min(16);
+        message.data[..len].copy_from_slice(&data[..len]);
+        message
+    }
+}
+
+type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<FdcanMessage, 16>;
 pub static FDCAN_RECEIVE_BUF: SpinLock<Option<&'static mut ReceiveBuffer>> = SpinLock::new(None);
 
 pub static FDCANSHARE: SpinLock<Option<FdcanShared>> = SpinLock::new(None);
@@ -390,4 +371,16 @@ fn init_buffer() -> &'static mut ReceiveBuffer {
 
 pub fn init_receive_buf() {
     *FDCAN_RECEIVE_BUF.try_lock().unwrap() = Some(init_buffer());
+}
+
+#[interrupt]
+fn FDCAN1_INTR0_IT() {
+    fdcan1_tx_isr();
+    clear_pending_irq(device::Interrupt::FDCAN1_INTR0_IT);
+}
+
+#[interrupt]
+fn FDCAN1_INTR1_IT() {
+    fdcan1_rx_isr();
+    clear_pending_irq(device::Interrupt::FDCAN1_INTR1_IT);
 }

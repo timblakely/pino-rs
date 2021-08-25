@@ -2,6 +2,7 @@
 
 use cortex_m::peripheral::{syst::SystClkSource, SYST};
 use stm32g4::stm32g474 as device;
+use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
 // Shamelessly lifted from m4vga-rs
 #[macro_export]
@@ -152,10 +153,19 @@ pub fn disable_dead_battery_pd(pwr: &device::PWR) {
     pwr.cr3.modify(|_, w| w.ucpd1_dbdis().bit(true));
 }
 
+static SYSTICK_SHARED: SpinLock<Option<SYST>> = SpinLock::new(None);
+
+// Small wrapper to make sure that SYSTICK_SHARED doesn't escape this module.
+pub fn donate_systick(systick: device::SYST) {
+    *SYSTICK_SHARED.try_lock().unwrap() = Some(systick);
+}
+
 // Use SysTick as a blocking timer instead of sacrificing a Timer peripheral. Since it's blocking,
 // we don't have to worry about the overhead of the interrupt, so we can actually do
 // microsecond-level blocking with a spinguard. Note that this disables the SysTick interrupt.
-pub fn blocking_sleep_us(systick: &mut SYST, us: u32) {
+// TODO(blakely): Add option to block interrupts as well.
+pub fn blocking_sleep_us(us: u32) {
+    let systick = &mut sync::acquire_hw(&SYSTICK_SHARED);
     systick.disable_interrupt();
     systick.disable_counter();
     systick.set_clock_source(SystClkSource::Core);
@@ -170,11 +180,12 @@ pub fn blocking_sleep_us(systick: &mut SYST, us: u32) {
             desired_ticks & ((1 << 24) - 1),
             (1 << 24) - 1,
         ),
-        false => (0, 0, desired_ticks),
+        false => (1, 0, desired_ticks),
     };
+    systick.clear_current();
     systick.set_reload(reload);
-    systick.enable_counter();
     let _ = systick.has_wrapped();
+    systick.enable_counter();
     while loop_count > 0 {
         while !systick.has_wrapped() {}
         loop_count -= 1;

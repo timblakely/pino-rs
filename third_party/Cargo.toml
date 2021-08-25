@@ -9,6 +9,7 @@ edition = "2021"
 
 [dependencies]
 cortex-m = "0.7.2"
+scopeguard = {version="1.1.0", default-features=false}
 
 [lib]
 test = false
