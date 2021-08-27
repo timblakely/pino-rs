@@ -58,31 +58,32 @@ fn main() -> ! {
             hardware.tim1.ccr4.write(|w| w.ccr4().bits(CCR_2V));
 
             let _foo = hardware.current_sensor.sample();
+            let asdf = 1;
 
-            match hardware.square_wave_state {
-                0 => {
-                    // Switching states
-                    hardware.sign = -hardware.sign;
-                    hardware.square_wave_state += 1;
-                }
-                _ => {
-                    hardware.square_wave_state += 1;
-                    if hardware.square_wave_state >= 4 {
-                        hardware.square_wave_state = 0;
-                    }
-                }
-            };
-            if hardware.sign < 0. {
-                // Set A high and B and C low
-                hardware.tim1.ccr1.write(|w| w.ccr1().bits(CCR_2V));
-                hardware.tim1.ccr2.write(|w| w.ccr2().bits(0));
-                hardware.tim1.ccr3.write(|w| w.ccr3().bits(0));
-            } else {
-                // Set A high and B and C low
-                hardware.tim1.ccr1.write(|w| w.ccr1().bits(0));
-                hardware.tim1.ccr2.write(|w| w.ccr2().bits(CCR_2V));
-                hardware.tim1.ccr3.write(|w| w.ccr3().bits(CCR_2V));
-            }
+            // match hardware.square_wave_state {
+            //     0 => {
+            //         // Switching states
+            //         hardware.sign = -hardware.sign;
+            //         hardware.square_wave_state += 1;
+            //     }
+            //     _ => {
+            //         hardware.square_wave_state += 2;
+            //         if hardware.square_wave_state >= 4 {
+            //             hardware.square_wave_state = 0;
+            //         }
+            //     }
+            // };
+            // if hardware.sign < 0. {
+            //     // Set A high and B and C low
+            //     hardware.tim1.ccr1.write(|w| w.ccr1().bits(CCR_2V));
+            //     hardware.tim1.ccr2.write(|w| w.ccr2().bits(0));
+            //     hardware.tim1.ccr3.write(|w| w.ccr3().bits(0));
+            // } else {
+            //     // Set A high and B and C low
+            //     hardware.tim1.ccr1.write(|w| w.ccr1().bits(0));
+            //     hardware.tim1.ccr2.write(|w| w.ccr2().bits(CCR_2V));
+            //     hardware.tim1.ccr3.write(|w| w.ccr3().bits(CCR_2V));
+            // }
         },
     );
     loop {}
