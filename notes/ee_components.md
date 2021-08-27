@@ -15,3 +15,8 @@ pigtails](http://www.digikey.com/product-search/en/cable-assemblies/coaxial-cabl
 [Datasheet](../third_party/st/documents/stm32g474re.pdf)
 
 [Reference manual](../third_party/st/documents/rm0440-stm32g4-series-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+
+
+## STM32H725VGT6/STM32H735VGT6
+
+[Newark](https://www.newark.com/stmicroelectronics/stm32h735vgt6/mcu-32bit-550mhz-lqfp-100-rohs/dp/89AH1358?st=stm32h7) has the 35 coming in November for $15.79@10+.
