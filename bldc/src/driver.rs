@@ -571,7 +571,7 @@ impl Controller<Init> {
         .configure_phase_sensing()
         .configure_v_refint()
         .configure_v_bus(V_BUS_GAIN)
-        .calibrate(100000);
+        .calibrate(20000);
 
         // Configure FDCAN
         let fdcan = fdcan::take(self.mode_state.fdcan)
@@ -753,10 +753,6 @@ fn ADC1_2() {
         cortex_m::asm::nop();
         cortex_m::asm::nop();
         *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
-    }
-    // HACK HACK HACK: Clear EOS for ADC 1
-    unsafe {
-        *(0x5000_0000 as *mut u32) = 1 << 3;
     }
     let (hardware, control_parameters) = &mut *SpinLockGuard::map(
         COMMUTATION_SHARED.try_lock().expect("adc interrupt lock"),

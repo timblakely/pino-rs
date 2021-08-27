@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 
 use stm32g4::stm32g474 as device;
-use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
 use crate::{block_until, block_while, util::stm32::blocking_sleep_us};
 
@@ -122,7 +121,7 @@ fn set_conversion_on_trgo2(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &devi
     });
 }
 
-fn set_continuous_conversion(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &device::ADC3) {
+fn set_single_conversion(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &device::ADC3) {
     adc1.cfgr.modify(|_, w| {
         w.res()
             .bits12()
@@ -131,7 +130,7 @@ fn set_continuous_conversion(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &de
             .align()
             .right()
             .cont()
-            .continuous()
+            .single()
             .discen()
             .disabled()
             .ovrmod()
@@ -145,7 +144,7 @@ fn set_continuous_conversion(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &de
             .align()
             .right()
             .cont()
-            .continuous()
+            .single()
             .discen()
             .disabled()
             .ovrmod()
@@ -159,7 +158,7 @@ fn set_continuous_conversion(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &de
             .align()
             .right()
             .cont()
-            .continuous()
+            .single()
             .discen()
             .disabled()
             .ovrmod()
@@ -212,11 +211,10 @@ impl CurrentSensor<Configuring> {
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
         adc3.cr
             .modify(|_, w| w.deeppwd().disabled().advregen().enabled());
+        // Allow voltage regulators to warm up. Datasheet says 20us max, so let's do 30us to be
+        // safe.
+        blocking_sleep_us(30);
 
-        // Allow voltage regulators to warm up. Datasheet says 20us max.
-        blocking_sleep_us(20);
-
-        // Begin calibration
         // Can probably combine these modifies, but kept separate in case the clear bit has to be
         // set first.
         adc1.cr.modify(|_, w| w.aden().clear_bit());
@@ -230,6 +228,10 @@ impl CurrentSensor<Configuring> {
         adc3.cr.modify(|_, w| w.adcal().set_bit());
 
         // Wait for it to complete
+        // Datasheet table 66 suggests t_cal is 116*1/f_adc. Since we're using a 4x clock
+        // downscaling, that results in 1/(170e6/4) * 1e6 * 116 = 2.7294 us. Might as well block for
+        // 10us just to be safe.
+        blocking_sleep_us(10);
         block_until!(adc1.cr.read().adcal().bit_is_clear());
         block_until!(adc2.cr.read().adcal().bit_is_clear());
         block_until!(adc3.cr.read().adcal().bit_is_clear());
@@ -273,7 +275,6 @@ impl CurrentSensor<Configuring> {
         adc1.smpr1.modify(|_, w| w.smp2().cycles2_5());
         adc2.smpr1.modify(|_, w| w.smp1().cycles2_5());
         adc3.smpr1.modify(|_, w| w.smp1().cycles2_5());
-        // 12-bit non-continuous conversion (triggered).
         set_conversion_on_trgo2(adc1, adc2, adc3);
 
         self
@@ -411,24 +412,26 @@ impl CurrentSensor<Configuring> {
     }
 
     pub fn calibrate(self, samples_to_average: u32) -> CurrentSensor<Sampling> {
-        set_continuous_conversion(&self.phase_a, &self.phase_b, &self.phase_c);
-
-        // Start sampling.
-        self.phase_a.cr.modify(|_, w| w.adstart().set_bit());
-        self.phase_b.cr.modify(|_, w| w.adstart().set_bit());
-        self.phase_c.cr.modify(|_, w| w.adstart().set_bit());
-        self.v_bus.cr.modify(|_, w| w.adstart().set_bit());
-        self.v_refint.cr.modify(|_, w| w.adstart().set_bit());
-
         // Sample zero/resting state currents
         let mut phase_a_offset: f32 = 0.;
         let mut phase_b_offset: f32 = 0.;
         let mut phase_c_offset: f32 = 0.;
 
+        // Start continuous sampling on v_bus and v_refint
+        self.v_bus.cr.modify(|_, w| w.adstart().set_bit());
+        self.v_refint.cr.modify(|_, w| w.adstart().set_bit());
         // Make sure we've got a reading on v_bus and v_refint
         block_until!(self.v_bus.isr.read().eoc().is_complete());
         block_until!(self.v_refint.isr.read().eoc().is_complete());
+
+        // Switch from whatever state we're in (expected to be tim_trgo2-based sampling) to
+        // continuous conversion for calibration. Only relevant for the phases, since v_bus and
+        // v_refint are set to continuous conversion by default.
+        set_single_conversion(&self.phase_a, &self.phase_b, &self.phase_c);
         for _ in 1..samples_to_average {
+            self.phase_a.cr.modify(|_, w| w.adstart().set_bit());
+            self.phase_b.cr.modify(|_, w| w.adstart().set_bit());
+            self.phase_c.cr.modify(|_, w| w.adstart().set_bit());
             block_until!(self.phase_a.isr.read().eoc().is_complete());
             block_until!(self.phase_b.isr.read().eoc().is_complete());
             block_until!(self.phase_c.isr.read().eoc().is_complete());
@@ -436,6 +439,7 @@ impl CurrentSensor<Configuring> {
             phase_a_offset += sample.phase_a;
             phase_b_offset += sample.phase_b;
             phase_c_offset += sample.phase_c;
+            blocking_sleep_us(1);
         }
         phase_a_offset /= samples_to_average as f32;
         phase_b_offset /= samples_to_average as f32;
@@ -488,16 +492,29 @@ fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasuremen
     let v_refint = sensor.v_refint.dr.read().bits() as u16;
     let sense_v_ref_over_2: f32 = sensor.sense_v_ref / 2.0;
 
-    let calc_phase_current = |adc_reading: u32| -> f32 {
-        (sense_v_ref_over_2 - (sensor.from_v_refint)(v_refint, adc_reading as u16))
-            * sensor.sense_gain
+    let calc_phase_current = |adc_reading: u16| -> f32 {
+        let adc_voltage = (sensor.from_v_refint)(v_refint, adc_reading as u16);
+        (sense_v_ref_over_2 - adc_voltage) * sensor.sense_gain
     };
+    let phase_a = sensor.phase_a.dr.read().rdata().bits();
+    let phase_b = sensor.phase_b.dr.read().rdata().bits();
+    let phase_c = sensor.phase_c.dr.read().rdata().bits();
+    let phase_a = calc_phase_current(phase_a) - sensor.phase_a_offset;
+    let phase_b = calc_phase_current(phase_b) - sensor.phase_b_offset;
+    let phase_c = calc_phase_current(phase_c) - sensor.phase_c_offset;
+    let v_bus =
+        (sensor.from_v_refint)(v_refint, sensor.v_bus.dr.read().bits() as u16) * sensor.v_bus_gain;
+
+    // Clear the EOS flag from ADC1, what we're using to trigger the control loop interrupt.
+    // Note: `clear()` is a bad name, since it doesn't clear the _bit_, but clears the _flag_ by
+    // writing a 1.
+    sensor.phase_a.isr.modify(|_, w| w.eos().clear());
+
     CurrentMeasurement {
-        phase_a: calc_phase_current(sensor.phase_a.dr.read().bits()) - sensor.phase_a_offset,
-        phase_b: calc_phase_current(sensor.phase_b.dr.read().bits()) - sensor.phase_b_offset,
-        phase_c: calc_phase_current(sensor.phase_c.dr.read().bits()) - sensor.phase_c_offset,
-        v_bus: (sensor.from_v_refint)(v_refint, sensor.v_bus.dr.read().bits() as u16)
-            * sensor.v_bus_gain,
+        phase_a,
+        phase_b,
+        phase_c,
+        v_bus,
     }
 }
 
