@@ -24,7 +24,7 @@ What is a transfer function, and what does it mean?
   - Remember, $e^{i\omega}$ is like $cos(\omega t) + i\ sin(\omega t)$
   - Plugging in $i\omega$ is like forcing $G$ with a sine wave
 - Magnitude: $\left|G(i\omega)\right| = A$
-- Phase: $\angleG(i\omega) = \phi$
+- Phase: $\angle G(i\omega) = \phi$
 
 Idea: if we laplace transform state space, we get transfer function representation in terms of laplace variable $s$
 - Essentially if you input different frequencies of sines into your system, how does the output sine look?
