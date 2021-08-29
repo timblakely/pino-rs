@@ -32,7 +32,7 @@ Loop transfer function $L$
   - Good noise attenuation $(I+PK)^{-1}PKn$
     - High frequencies we want this to be small
 
-$y_m=\underbrace{(I+PK)^{-1}PK}_{Complementary\ Sensitivity\ T}r + \underbrace{(I+PK)^{-1}}_{Sensitivity\ S}P_dd - \underbrace{(I+PK)^{-1}}_{T\ again}PKn$
+$y=\underbrace{(I+PK)^{-1}PK}_{Complementary\ Sensitivity\ T}r + \underbrace{(I+PK)^{-1}}_{Sensitivity\ S}P_dd - \underbrace{(I+PK)^{-1}}_{T\ again}PKn$
 - Can write in terms of loop transfer function $L=PK$
 - $S=(I+L)^{-1}$
 - $T=(I+L)^{-1}L$
