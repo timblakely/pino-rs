@@ -29,3 +29,5 @@ Why is -1 so special?
 $S=\frac{1}{1+L}$
 - Closer $L$ is to -1, $S$ becomes big
 - $max\left|S\right|$ at $\omega$
+
+![](images/2021-08-30-20-09-06.png)
