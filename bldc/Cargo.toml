@@ -17,6 +17,7 @@ fixed = "1.9.0"
 panic-itm = {version = "0.4.2", optional = true}
 paste = "1.0"
 ringbuffer = {version = "0.5.1", default-features = false}
+rlsf = {version = "0.1.2" }
 static_assertions = "1.1.0"
 third_party = {path = "../third_party"}
 vcell = "0.1.0"
@@ -25,6 +26,9 @@ vcell = "0.1.0"
 default = ["panic-itm"]
 
 
+
+[dependencies.alloc-cortex-m]
+path = "../../alloc-cortex-m"
 
 [dependencies.stm32g4]
 default-features = false

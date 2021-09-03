@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use core::ops;
 
 use stm32g4::stm32g474 as device;
 
@@ -525,8 +526,41 @@ pub struct CurrentMeasurement {
     pub v_bus: f32,
 }
 
+impl CurrentMeasurement {
+    pub fn new() -> CurrentMeasurement {
+        CurrentMeasurement {
+            phase_a: 0.,
+            phase_b: 0.,
+            phase_c: 0.,
+            v_bus: 0.,
+        }
+    }
+}
+
 impl CurrentSensor<Sampling> {
     pub fn sample(&mut self) -> CurrentMeasurement {
         sample(self)
+    }
+}
+
+impl ops::Add for CurrentMeasurement {
+    type Output = CurrentMeasurement;
+
+    fn add(self, rhs: CurrentMeasurement) -> Self::Output {
+        CurrentMeasurement {
+            phase_a: self.phase_a + rhs.phase_a,
+            phase_b: self.phase_b + rhs.phase_b,
+            phase_c: self.phase_c + rhs.phase_c,
+            v_bus: self.v_bus + rhs.v_bus,
+        }
+    }
+}
+
+impl ops::AddAssign for CurrentMeasurement {
+    fn add_assign(&mut self, rhs: Self) {
+        self.phase_a += rhs.phase_a;
+        self.phase_b += rhs.phase_b;
+        self.phase_c += rhs.phase_c;
+        self.v_bus += rhs.v_bus;
     }
 }

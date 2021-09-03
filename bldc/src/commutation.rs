@@ -1,5 +1,5 @@
 use crate::{
-    current_sensing::{self, CurrentSensor},
+    current_sensing::{self, CurrentMeasurement, CurrentSensor},
     ic::ma702::{Ma702, Streaming},
 };
 use stm32g4::stm32g474 as device;
@@ -19,4 +19,44 @@ pub struct ControlParameters {
     pub pwm_duty: f32,
     pub d: f32,
     pub q: f32,
+}
+
+pub enum LoopState {
+    Running,
+    Finished,
+    Idle,
+}
+
+pub struct AverageCurrentSensor {
+    total_counts: u32,
+    loop_count: u32,
+    sample: CurrentMeasurement,
+}
+
+impl AverageCurrentSensor {
+    pub fn new() -> AverageCurrentSensor {
+        AverageCurrentSensor {
+            total_counts: 0,
+            loop_count: 0,
+            sample: CurrentMeasurement::new(),
+        }
+    }
+}
+
+pub trait Commutation: Send + Sync {
+    fn commutate(&mut self, hardware: &mut Hardware) -> LoopState;
+    fn finished(&self, _hardware: &mut Hardware) {}
+}
+
+impl Commutation for AverageCurrentSensor {
+    fn commutate(&mut self, hardware: &mut Hardware) -> LoopState {
+        self.loop_count += 1;
+        self.sample += hardware.current_sensor.sample();
+        match self.loop_count {
+            x if x >= self.total_counts => LoopState::Finished,
+            _ => LoopState::Running,
+        }
+    }
+
+    fn finished(&self, _hardware: &mut Hardware) {}
 }
