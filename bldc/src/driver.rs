@@ -1,7 +1,8 @@
 use crate::comms::fdcan::FdcanMessage;
-use crate::commutation::{ControlParameters, Hardware};
+use crate::commutation::{Commutation, ControlParameters, Hardware, LoopState};
 use crate::current_sensing::{self, CurrentSensor};
 use crate::util::buffered_state::{BufferedState, StateReader};
+use crate::util::interrupts;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
@@ -14,6 +15,8 @@ use crate::{
     ic::drv8323rs,
     ic::ma702::{self, Ma702, Streaming},
 };
+extern crate alloc;
+use alloc::boxed::Box;
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
 use fixed::types::I1F31;
@@ -646,19 +649,29 @@ impl Controller<Init> {
     }
 }
 
-static CONTROL: third_party::m4vga_rs::util::iref::IRef<(&mut Hardware, &ControlParameters)> =
-    third_party::m4vga_rs::util::iref::IRef::new();
-static COMMUTATION_SHARED: SpinLock<Option<(Hardware, StateReader<ControlParameters>)>> =
-    SpinLock::new(None);
+static CONTROL_LOOP: interrupts::InterruptBLock<Box<dyn Commutation>> =
+    interrupts::InterruptBLock::new(device::interrupt::ADC1_2);
+
+static INTERRUPT_DATA: SpinLock<
+    Option<(
+        Option<Box<dyn Commutation>>,
+        Hardware,
+        StateReader<ControlParameters>,
+    )>,
+> = SpinLock::new(None);
 static COMMS_SHARED: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl Controller<Ready> {
+    pub fn set_commutator(&self, commutator: Box<dyn Commutation>) -> &Self {
+        *CONTROL_LOOP.lock() = Some(commutator);
+        self
+    }
+
     pub fn run(
         self,
         initial_state: ControlParameters,
         mut comms_handler: impl FnMut(&FdcanMessage, &mut ControlParameters),
-        mut commutation_impl: impl FnMut(&mut Hardware, &ControlParameters) + Send,
     ) {
         // Since the interrupt handler can interrupt the main thread's modifications of any shared
         // state, we use a double-buffer and atomic swap to ensure a full update.
@@ -675,8 +688,9 @@ impl Controller<Ready> {
 
         // Pass off both the control parameters and hardware to the commutation interrupt handler.
         {
-            let mut shared = COMMUTATION_SHARED.lock();
+            let mut shared = INTERRUPT_DATA.lock();
             *shared = Some((
+                None,
                 Hardware {
                     tim1: self.mode_state.tim1,
                     ma702: self.mode_state.ma702,
@@ -689,56 +703,43 @@ impl Controller<Ready> {
         }
         // We don't want the timer to fire while we've got this lock, so disable the interrupt while
         // we're starting it up.
-        crate::util::interrupts::free_from(
-            device::interrupt::ADC1_2,
-            &COMMUTATION_SHARED,
-            |shared| {
-                let (hardware, _) = &*shared;
-                // Kick off tim1.
-                hardware.tim1.cr1.modify(|_, w| w.cen().set_bit());
-                // Now that the timer has started, enable the main output to allow current on the pins. If
-                // we do this before we enable the time, we have the potential to get into a state where the
-                // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-                // current through the high phase to any low phases.
-                hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
-            },
-        );
-
-        //
-
-        // This is where the fun starts. We've got the commutation function here in the main loop,
-        // but we've got to send it to the interrupt handler. Callbacks are fat pointers, and so far
-        // you're only allowed to store trait objects (`dyn FnMut`) in `Box`es. We're getting around
-        // that by donating it to an `IRef` thats' accessible from the ADC1_2 interrupt handler. The
-        // way `IRef` works is that it donates the reference only as long as the `scope` parameter
-        // is not finished. Once `scope` returns, it will wait for any observers to complete then to
-        // the empty state.
-        CONTROL.donate(&mut commutation_impl, || {
-            loop {
-                // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from
-                // firing - the only other interrupt that shares this particular buffer - ensuring
-                // we aren't preempted when reading from it. This is fine in general since the
-                // peripheral itself has an internal buffer, and as long as we can clear the backlog
-                // before the peripheral receives 4 requests we should be good. Alternatively, we
-                // could just process a single message here to make sure that we only hold this lock
-                // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
-                // form though...
-                crate::util::interrupts::free_from(
-                    device::interrupt::FDCAN1_INTR1_IT,
-                    &FDCAN_RECEIVE_BUF,
-                    |mut buf| {
-                        while let Some(message) = buf.dequeue_ref() {
-                            comms_handler(&message, &mut comms_params.update());
-                        }
-                    },
-                );
-            }
+        interrupts::free_from(device::interrupt::ADC1_2, &INTERRUPT_DATA, |shared| {
+            let (_, hardware, _) = &*shared;
+            // Kick off tim1.
+            hardware.tim1.cr1.modify(|_, w| w.cen().set_bit());
+            // Now that the timer has started, enable the main output to allow current on the pins. If
+            // we do this before we enable the time, we have the potential to get into a state where the
+            // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+            // current through the high phase to any low phases.
+            hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
         });
+
+        loop {
+            // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from
+            // firing - the only other interrupt that shares this particular buffer - ensuring
+            // we aren't preempted when reading from it. This is fine in general since the
+            // peripheral itself has an internal buffer, and as long as we can clear the backlog
+            // before the peripheral receives 4 requests we should be good. Alternatively, we
+            // could just process a single message here to make sure that we only hold this lock
+            // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
+            // form though...
+            crate::util::interrupts::free_from(
+                device::interrupt::FDCAN1_INTR1_IT,
+                &FDCAN_RECEIVE_BUF,
+                |mut buf| {
+                    while let Some(message) = buf.dequeue_ref() {
+                        comms_handler(&message, &mut comms_params.update());
+                    }
+                },
+            );
+        }
     }
 }
 
 #[interrupt]
 fn ADC1_2() {
+    // Clear the IRQ so it doesn't immediately fire again.
+    clear_pending_irq(device::Interrupt::ADC1_2);
     // Main control loop.
     unsafe {
         *(0x4800_0418 as *mut u32) = 1 << 9;
@@ -754,12 +755,27 @@ fn ADC1_2() {
         cortex_m::asm::nop();
         *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
     }
-    let (hardware, control_parameters) = &mut *SpinLockGuard::map(
-        COMMUTATION_SHARED.try_lock().expect("adc interrupt lock"),
-        |o| o.as_mut().expect("Control params not set"),
-    );
-    CONTROL.observe(|r| r(hardware, control_parameters.read()));
-    clear_pending_irq(device::Interrupt::ADC1_2);
+
+    match &*CONTROL_LOOP.lock() {
+        Some(x) => x.test(),
+        _ => (),
+    };
+
+    // let (comm, hardware, control_parameters) = &mut *SpinLockGuard::map(
+    //     INTERRUPT_DATA.try_lock().expect("adc interrupt lock"),
+    //     |o| o.as_mut().expect("Control params not set"),
+    // );
+
+    // let comm = match comm {
+    //     Some(x) => x,
+    //     _ => return,
+    // };
+
+    // let loop_state = comm.commutate(hardware);
+    // match loop_state {
+    //     LoopState::Finished => comm.finished(hardware),
+    //     _ => (),
+    // }
 }
 
 pub struct FdcanShared {

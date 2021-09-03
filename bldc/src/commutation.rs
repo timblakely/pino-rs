@@ -44,11 +44,16 @@ impl AverageCurrentSensor {
 }
 
 pub trait Commutation: Send + Sync {
+    fn test(&self);
     fn commutate(&mut self, hardware: &mut Hardware) -> LoopState;
     fn finished(&self, _hardware: &mut Hardware) {}
 }
 
 impl Commutation for AverageCurrentSensor {
+    fn test(&self) {
+        let mut asdf = 0;
+        asdf += 1;
+    }
     fn commutate(&mut self, hardware: &mut Hardware) -> LoopState {
         self.loop_count += 1;
         self.sample += hardware.current_sensor.sample();
