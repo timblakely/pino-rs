@@ -35,8 +35,9 @@ pub struct IdleCurrentSensor {
 
 impl IdleCurrentSensor {
     pub fn new(duration: f32) -> IdleCurrentSensor {
+        // TODO(blakely): assumes 40kHz loop
         IdleCurrentSensor {
-            total_counts: 0,
+            total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             sample: CurrentMeasurement::new(),
         }
@@ -46,7 +47,7 @@ impl IdleCurrentSensor {
 pub trait ControlLoop: Send + Sync {
     fn commutate(&mut self, current_sensor: &CurrentSensor<current_sensing::Sampling>)
         -> LoopState;
-    fn finished(&self) {}
+    fn finished(&mut self) {}
 }
 
 impl ControlLoop for IdleCurrentSensor {
@@ -62,5 +63,9 @@ impl ControlLoop for IdleCurrentSensor {
         }
     }
 
-    fn finished(&self) {}
+    fn finished(&mut self) {
+        self.sample /= self.loop_count;
+        let mut _asdf = 0;
+        _asdf += 1;
+    }
 }

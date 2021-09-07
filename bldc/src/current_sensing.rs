@@ -489,6 +489,15 @@ impl CurrentSensor<Configuring> {
     }
 }
 
+impl CurrentSensor<Sampling> {
+    pub fn acknowledge_eos(&mut self) {
+        // Clear the EOS flag from ADC1, what we're using to trigger the control loop interrupt.
+        // Note: `clear()` is a bad name, since it doesn't clear the _bit_, but clears the _flag_ by
+        // writing a 1.
+        self.phase_a.isr.modify(|_, w| w.eos().clear());
+    }
+}
+
 fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasurement {
     let v_refint = sensor.v_refint.dr.read().bits() as u16;
     let sense_v_ref_over_2: f32 = sensor.sense_v_ref / 2.0;
@@ -505,11 +514,6 @@ fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasuremen
     let phase_c = calc_phase_current(phase_c) - sensor.phase_c_offset;
     let v_bus =
         (sensor.from_v_refint)(v_refint, sensor.v_bus.dr.read().bits() as u16) * sensor.v_bus_gain;
-
-    // Clear the EOS flag from ADC1, what we're using to trigger the control loop interrupt.
-    // Note: `clear()` is a bad name, since it doesn't clear the _bit_, but clears the _flag_ by
-    // writing a 1.
-    sensor.phase_a.isr.modify(|_, w| w.eos().clear());
 
     CurrentMeasurement {
         phase_a,
@@ -562,5 +566,14 @@ impl ops::AddAssign for CurrentMeasurement {
         self.phase_b += rhs.phase_b;
         self.phase_c += rhs.phase_c;
         self.v_bus += rhs.v_bus;
+    }
+}
+
+impl ops::DivAssign<u32> for CurrentMeasurement {
+    fn div_assign(&mut self, rhs: u32) {
+        self.phase_a /= rhs as f32;
+        self.phase_b /= rhs as f32;
+        self.phase_c /= rhs as f32;
+        self.v_bus /= rhs as f32;
     }
 }

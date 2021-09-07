@@ -114,10 +114,10 @@ impl<'a, T> core::ops::DerefMut for BLockGuard<'a, T> {
 
 impl<'a, T> Drop for BLockGuard<'a, T> {
     fn drop(&mut self) {
+        self.lock.store(false, Ordering::Release);
         if self.enabled {
             enable_irq(*self.irq);
         }
-        self.lock.store(false, Ordering::Release);
     }
 }
 

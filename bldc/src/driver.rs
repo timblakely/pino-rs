@@ -786,6 +786,10 @@ fn ADC1_2() {
     let mut loop_vars = CONTROL_LOOP.lock();
     let loop_vars = loop_vars.as_mut().expect("Loop variables not set");
 
+    // Required otherwise the ADC will immediately trigger another interrupt, regardless of whether
+    // the IRQ was cleared in the NVIC above.
+    loop_vars.current_sensor.acknowledge_eos();
+
     let commutator = match loop_vars.control_loop {
         Some(ref mut x) => x,
         _ => return,

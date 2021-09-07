@@ -22,6 +22,7 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // TODO(blakely): Implement emergency stop.
 fn emergency_stop() {}
 
+// Heap is a bit scary
 static mut HEAP: [MaybeUninit<u8>; 1 << 12] = [MaybeUninit::<u8>::uninit(); 1 << 12];
 
 // TODO(blakely): Comment on all the stuff that happens before we actually get
