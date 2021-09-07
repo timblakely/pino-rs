@@ -8,6 +8,10 @@ pub struct ForcePwm {
     pub toot: [u8; 3],
 }
 
+pub struct IdleCurrentSense {
+    pub duration: f32,
+}
+
 pub struct SetCurrents {
     pub q: f32,
     pub d: f32,
@@ -16,11 +20,14 @@ pub struct SetCurrents {
 pub struct EStop {}
 
 pub enum Messages {
+    IdleCurrentSense(IdleCurrentSense),
     ForcePwm(ForcePwm),
     SetCurrents(SetCurrents),
     EStop(EStop),
 }
 
+// TODO(blakely): split into received/sent, since some of the messages only make sense for incoming
+// or outgoing messages.
 pub trait ExtendedFdcanFrame {
     // Unpack the message from a buffer.
     fn unpack(message: &FdcanMessage) -> Self;
@@ -60,9 +67,22 @@ impl ExtendedFdcanFrame for ForcePwm {
     }
 }
 
+impl ExtendedFdcanFrame for IdleCurrentSense {
+    fn unpack(message: &FdcanMessage) -> Self {
+        let buffer = message.data;
+        IdleCurrentSense {
+            duration: f32::from_bits(buffer[0]),
+        }
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        panic!("Pack not supported");
+    }
+}
+
 impl ExtendedFdcanFrame for EStop {
     fn unpack(_: &FdcanMessage) -> Self {
-        EStop {}
+        panic!("Unack not supported");
     }
 
     fn pack(&self) -> FdcanMessage {
@@ -90,6 +110,7 @@ impl Messages {
             0x0 => Some(Self::EStop(EStop::unpack(message))),
             0xA => Some(Self::ForcePwm(ForcePwm::unpack(message))),
             0xB => Some(Self::SetCurrents(SetCurrents::unpack(message))),
+            0xC => Some(Self::IdleCurrentSense(IdleCurrentSense::unpack(message))),
             _ => None,
         }
     }

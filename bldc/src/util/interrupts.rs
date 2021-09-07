@@ -37,9 +37,11 @@ pub fn in_interrupt(irq: impl InterruptNumber) -> InterruptState {
     }
 }
 
+// Synchronization primitive that allows for locking of the contents while blocking an IRQ, allowing
+// the data to be passed synchronously into the interrupt handler.
 pub struct InterruptBLock<T> {
     irq: Interrupt,
-    contents: UnsafeCell<Option<T>>,
+    contents: UnsafeCell<T>,
     lock: AtomicBool,
 }
 
@@ -49,22 +51,25 @@ pub enum BLockError {
 }
 
 impl<T> InterruptBLock<T> {
-    pub const fn new(irq: Interrupt) -> InterruptBLock<T> {
+    pub const fn new(irq: Interrupt, contents: T) -> InterruptBLock<T> {
         InterruptBLock {
             irq,
-            contents: UnsafeCell::new(None),
+            contents: UnsafeCell::new(contents),
             lock: AtomicBool::new(false),
         }
     }
 
-    pub fn try_lock(&self) -> Result<BLockGuard<Option<T>>, BLockError> {
+    pub fn try_lock(&self) -> Result<BLockGuard<T>, BLockError> {
         // Store whether the interrupt is enabled.
         let enabled = NVIC::is_enabled(self.irq);
         // Disable the interrupt first. If we're in an interrupt this has no effect.
         disable_irq(self.irq);
         if self.lock.swap(true, Ordering::Acquire) {
-            // If there was already a true in there, lock was contended.
-            enable_irq(self.irq);
+            // If there was already a true in there, lock was contended. Re-enable IRQ if it was
+            // previously enabled.
+            if enabled {
+                enable_irq(self.irq);
+            }
             Err(BLockError::Contended)
         } else {
             // Acquired lock! Can safely observe contents of this lock.
@@ -77,7 +82,7 @@ impl<T> InterruptBLock<T> {
         }
     }
 
-    pub fn lock(&self) -> BLockGuard<Option<T>> {
+    pub fn lock(&self) -> BLockGuard<T> {
         loop {
             match self.try_lock() {
                 Ok(guard) => return guard,

@@ -538,7 +538,7 @@ impl CurrentMeasurement {
 }
 
 impl CurrentSensor<Sampling> {
-    pub fn sample(&mut self) -> CurrentMeasurement {
+    pub fn sample(&self) -> CurrentMeasurement {
         sample(self)
     }
 }

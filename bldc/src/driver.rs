@@ -1,5 +1,5 @@
 use crate::comms::fdcan::FdcanMessage;
-use crate::commutation::{Commutation, ControlParameters, Hardware, LoopState};
+use crate::commutation::{ControlLoop, ControlParameters, Hardware, LoopState};
 use crate::current_sensing::{self, CurrentSensor};
 use crate::util::buffered_state::{BufferedState, StateReader};
 use crate::util::interrupts;
@@ -27,7 +27,7 @@ use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
 
 const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
-pub struct Controller<S> {
+pub struct Driver<S> {
     pub mode_state: S,
 }
 
@@ -60,7 +60,7 @@ pub struct Ready {
     pub current_sensor: CurrentSensor<current_sensing::Sampling>,
 }
 
-pub fn take_hardware() -> Controller<Init> {
+pub fn take_hardware() -> Driver<Init> {
     let cp = cm::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();
 
@@ -116,7 +116,7 @@ fn init(
     adc4: device::ADC4,
     adc5: device::ADC5,
     cordic: device::CORDIC,
-) -> Controller<Init> {
+) -> Driver<Init> {
     disable_dead_battery_pd(&pwr);
 
     // Make sure we don't receive any interrupts before we're ready.
@@ -179,7 +179,7 @@ fn init(
         nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0x10);
     }
 
-    Controller {
+    Driver {
         mode_state: Init {
             fdcan,
             gpioa,
@@ -203,7 +203,7 @@ fn init(
     }
 }
 
-impl Controller<Init> {
+impl Driver<Init> {
     // TODO(blakely): Move into a device-specific, feature-guarded trait
     fn configure_gpio(&self) {
         // TODO(blakely): Implement split-borrowing to allow devices to take their own pins.
@@ -537,7 +537,7 @@ impl Controller<Init> {
         });
     }
 
-    pub fn configure_peripherals<'a>(self) -> Controller<Ready> {
+    pub fn configure_peripherals<'a>(self) -> Driver<Ready> {
         self.configure_gpio();
         self.configure_timers();
 
@@ -636,7 +636,7 @@ impl Controller<Init> {
         let _cos: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
         let _sin: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
 
-        let new_self = Controller {
+        let new_self = Driver {
             mode_state: Ready {
                 ma702,
                 drv,
@@ -649,70 +649,96 @@ impl Controller<Init> {
     }
 }
 
-static CONTROL_LOOP: interrupts::InterruptBLock<Box<dyn Commutation>> =
-    interrupts::InterruptBLock::new(device::interrupt::ADC1_2);
+struct ControlLoopVars {
+    control_loop: Option<Box<dyn ControlLoop>>,
+    current_sensor: CurrentSensor<current_sensing::Sampling>,
+}
 
-static INTERRUPT_DATA: SpinLock<
-    Option<(
-        Option<Box<dyn Commutation>>,
-        Hardware,
-        StateReader<ControlParameters>,
-    )>,
-> = SpinLock::new(None);
-static COMMS_SHARED: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
+static CONTROL_LOOP: interrupts::InterruptBLock<Option<ControlLoopVars>> =
+    interrupts::InterruptBLock::new(device::interrupt::ADC1_2, None);
+
+// static INTERRUPT_DATA: SpinLock<
+//     Option<(
+//         Option<Box<dyn Commutation>>,
+//         Hardware,
+//         StateReader<ControlParameters>,
+//     )>,
+// > = SpinLock::new(None);
+// static CONTROL_SHARED: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
+
+pub struct Commutator {}
+
+impl Commutator {
+    pub fn set(commutator: Box<dyn ControlLoop>) {
+        match *CONTROL_LOOP.lock() {
+            Some(ref mut v) => (*v).control_loop = Some(commutator),
+            None => panic!("Loop variables not set"),
+        };
+    }
+}
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
-impl Controller<Ready> {
-    pub fn set_commutator(&self, commutator: Box<dyn Commutation>) -> &Self {
-        *CONTROL_LOOP.lock() = Some(commutator);
-        self
-    }
-
-    pub fn run(
-        self,
-        initial_state: ControlParameters,
-        mut comms_handler: impl FnMut(&FdcanMessage, &mut ControlParameters),
+impl Driver<Ready> {
+    pub fn listen(
+        mut self,
+        // initial_state: ControlParameters,
+        // mut comms_handler: impl FnMut(&mut Driver<Ready>, &FdcanMessage, &mut ControlParameters),
+        mut comms_handler: impl FnMut(&FdcanMessage),
     ) {
         // Since the interrupt handler can interrupt the main thread's modifications of any shared
         // state, we use a double-buffer and atomic swap to ensure a full update.
-        *COMMS_SHARED.try_lock().unwrap() =
-            Some(BufferedState::<ControlParameters>::new(initial_state));
+        // *CONTROL_SHARED.try_lock().unwrap() =
+        //     Some(BufferedState::<ControlParameters>::new(initial_state));
         // Split the two states into a read-only control state that has read priority, and a mutable
         // state used for communication that writes the unused state and atomically swaps on
         // completion.
-        let mut shared_state = SpinLockGuard::map(
-            COMMS_SHARED.try_lock().expect("Shared state lock held"),
-            |o| o.as_mut().expect("Shared state not initialized"),
-        );
-        let (control_params, mut comms_params) = shared_state.split();
+        // let mut shared_state = SpinLockGuard::map(
+        //     CONTROL_SHARED.try_lock().expect("Shared state lock held"),
+        //     |o| o.as_mut().expect("Shared state not initialized"),
+        // );
+        // let (control_params, mut comms_params) = shared_state.split();
 
         // Pass off both the control parameters and hardware to the commutation interrupt handler.
-        {
-            let mut shared = INTERRUPT_DATA.lock();
-            *shared = Some((
-                None,
-                Hardware {
-                    tim1: self.mode_state.tim1,
-                    ma702: self.mode_state.ma702,
-                    current_sensor: self.mode_state.current_sensor,
-                    sign: -1.,
-                    square_wave_state: 0,
-                },
-                control_params,
-            ));
-        }
+        // {
+        //     let mut shared = INTERRUPT_DATA.lock();
+        //     *shared = Some((
+        //         None,
+        //         Hardware {
+        //             tim1: self.mode_state.tim1,
+        //             ma702: self.mode_state.ma702,
+        //             current_sensor: self.mode_state.current_sensor,
+        //             sign: -1.,
+        //             square_wave_state: 0,
+        //         },
+        //         control_params,
+        //     ));
+        // }
         // We don't want the timer to fire while we've got this lock, so disable the interrupt while
         // we're starting it up.
-        interrupts::free_from(device::interrupt::ADC1_2, &INTERRUPT_DATA, |shared| {
-            let (_, hardware, _) = &*shared;
-            // Kick off tim1.
-            hardware.tim1.cr1.modify(|_, w| w.cen().set_bit());
-            // Now that the timer has started, enable the main output to allow current on the pins. If
-            // we do this before we enable the time, we have the potential to get into a state where the
-            // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-            // current through the high phase to any low phases.
-            hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+        // interrupts::free_from(device::interrupt::ADC1_2, &INTERRUPT_DATA, |shared| {
+        //     let (_, hardware, _) = &*shared;
+        //     // Kick off tim1.
+        //     hardware.tim1.cr1.modify(|_, w| w.cen().set_bit());
+        //     // Now that the timer has started, enable the main output to allow current on the pins. If
+        //     // we do this before we enable the time, we have the potential to get into a state where the
+        //     // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+        //     // current through any high phases to any low phases.
+        //     hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+        // });
+
+        *CONTROL_LOOP.lock() = Some(ControlLoopVars {
+            control_loop: None,
+            current_sensor: self.mode_state.current_sensor,
         });
+
+        // Kick off tim1.
+        self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
+
+        // Now that the timer has started, enable the main output to allow current on the pins. If
+        // we do this before we enable the time, we have the potential to get into a state where the
+        // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+        // current through any high phases to any low phases.
+        self.mode_state.tim1.bdtr.modify(|_, w| w.moe().set_bit());
 
         loop {
             // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from
@@ -728,7 +754,7 @@ impl Controller<Ready> {
                 &FDCAN_RECEIVE_BUF,
                 |mut buf| {
                     while let Some(message) = buf.dequeue_ref() {
-                        comms_handler(&message, &mut comms_params.update());
+                        comms_handler(&message);
                     }
                 },
             );
@@ -756,26 +782,22 @@ fn ADC1_2() {
         *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
     }
 
-    match &*CONTROL_LOOP.lock() {
-        Some(x) => x.test(),
-        _ => (),
+    // If there's a control callback, call it. Otherwise just idle.
+    let mut loop_vars = CONTROL_LOOP.lock();
+    let loop_vars = loop_vars.as_mut().expect("Loop variables not set");
+
+    let commutator = match loop_vars.control_loop {
+        Some(ref mut x) => x,
+        _ => return,
     };
 
-    // let (comm, hardware, control_parameters) = &mut *SpinLockGuard::map(
-    //     INTERRUPT_DATA.try_lock().expect("adc interrupt lock"),
-    //     |o| o.as_mut().expect("Control params not set"),
-    // );
-
-    // let comm = match comm {
-    //     Some(x) => x,
-    //     _ => return,
-    // };
-
-    // let loop_state = comm.commutate(hardware);
-    // match loop_state {
-    //     LoopState::Finished => comm.finished(hardware),
-    //     _ => (),
-    // }
+    match commutator.commutate(&loop_vars.current_sensor) {
+        LoopState::Finished => {
+            commutator.finished();
+            loop_vars.control_loop = None;
+        }
+        _ => return,
+    }
 }
 
 pub struct FdcanShared {

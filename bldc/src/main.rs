@@ -10,7 +10,7 @@ use alloc::boxed::Box;
 use bldc::{
     allocator::initialize_heap,
     comms::messages::Messages,
-    commutation::{AverageCurrentSensor, ControlParameters},
+    commutation::{ControlParameters, IdleCurrentSensor},
     driver,
 };
 
@@ -32,26 +32,27 @@ fn main() -> ! {
         initialize_heap(&mut HEAP);
     }
 
-    let initial_state = ControlParameters {
-        pwm_duty: 0f32,
-        q: 0f32,
-        d: 0f32,
-    };
+    // let initial_state = ControlParameters {
+    //     pwm_duty: 0f32,
+    //     q: 0f32,
+    //     d: 0f32,
+    // };
 
-    let controller = driver::take_hardware().configure_peripherals();
+    let driver = driver::take_hardware().configure_peripherals();
 
     // Allocate the ACS on the heap.
-    let acc = Box::new(AverageCurrentSensor::new());
 
-    controller.set_commutator(acc);
-
-    controller.run(initial_state, |message, control_params| {
+    driver.listen(|message| {
         match Messages::unpack_fdcan(message) {
-            Some(Messages::ForcePwm(msg)) => control_params.pwm_duty = msg.pwm_duty,
-            Some(Messages::EStop(_)) => emergency_stop(),
-            Some(Messages::SetCurrents(msg)) => {
-                control_params.q = msg.q;
-                control_params.d = msg.d;
+            // Some(Messages::ForcePwm(msg)) => control_params.pwm_duty = msg.pwm_duty,
+            // Some(Messages::EStop(_)) => emergency_stop(),
+            // Some(Messages::SetCurrents(msg)) => {
+            //     control_params.q = msg.q;
+            //     control_params.d = msg.d;
+            // }
+            Some(Messages::IdleCurrentSense(m)) => {
+                let acc = Box::new(IdleCurrentSensor::new(m.duration));
+                driver::Commutator::set(acc);
             }
             _ => {}
         };

@@ -27,15 +27,15 @@ pub enum LoopState {
     Idle,
 }
 
-pub struct AverageCurrentSensor {
+pub struct IdleCurrentSensor {
     total_counts: u32,
     loop_count: u32,
     sample: CurrentMeasurement,
 }
 
-impl AverageCurrentSensor {
-    pub fn new() -> AverageCurrentSensor {
-        AverageCurrentSensor {
+impl IdleCurrentSensor {
+    pub fn new(duration: f32) -> IdleCurrentSensor {
+        IdleCurrentSensor {
             total_counts: 0,
             loop_count: 0,
             sample: CurrentMeasurement::new(),
@@ -43,25 +43,24 @@ impl AverageCurrentSensor {
     }
 }
 
-pub trait Commutation: Send + Sync {
-    fn test(&self);
-    fn commutate(&mut self, hardware: &mut Hardware) -> LoopState;
-    fn finished(&self, _hardware: &mut Hardware) {}
+pub trait ControlLoop: Send + Sync {
+    fn commutate(&mut self, current_sensor: &CurrentSensor<current_sensing::Sampling>)
+        -> LoopState;
+    fn finished(&self) {}
 }
 
-impl Commutation for AverageCurrentSensor {
-    fn test(&self) {
-        let mut asdf = 0;
-        asdf += 1;
-    }
-    fn commutate(&mut self, hardware: &mut Hardware) -> LoopState {
+impl ControlLoop for IdleCurrentSensor {
+    fn commutate(
+        &mut self,
+        current_sensor: &CurrentSensor<current_sensing::Sampling>,
+    ) -> LoopState {
         self.loop_count += 1;
-        self.sample += hardware.current_sensor.sample();
+        self.sample += current_sensor.sample();
         match self.loop_count {
             x if x >= self.total_counts => LoopState::Finished,
             _ => LoopState::Running,
         }
     }
 
-    fn finished(&self, _hardware: &mut Hardware) {}
+    fn finished(&self) {}
 }
