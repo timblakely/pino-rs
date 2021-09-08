@@ -8,28 +8,16 @@ extern crate alloc;
 use alloc::boxed::Box;
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
-// TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
-pub struct Hardware {
+pub struct ControlHardware {
+    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
     pub tim1: device::TIM1,
     pub ma702: Ma702<Streaming>,
-    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
-    // TODO(blakely): Move this into its own struct.
-    pub sign: f32,
-    pub square_wave_state: u32,
 }
 
-#[derive(Clone, Copy)]
-pub struct ControlParameters {
-    pub pwm_duty: f32,
-    pub d: f32,
-    pub q: f32,
-}
-
-///////
-
+// TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct ControlLoopVars {
     pub control_loop: Option<Box<dyn ControlLoop>>,
-    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
+    pub hw: ControlHardware,
 }
 
 pub static CONTROL_LOOP: InterruptBLock<Option<ControlLoopVars>> =
@@ -54,8 +42,7 @@ pub enum LoopState {
 
 // Trait that any control loops need to implement.
 pub trait ControlLoop: Send {
-    fn commutate(&mut self, current_sensor: &CurrentSensor<current_sensing::Sampling>)
-        -> LoopState;
+    fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState;
     fn finished(&mut self) {}
 }
 
@@ -84,11 +71,9 @@ impl<'a> IdleCurrentSensor<'a> {
 }
 
 impl<'a> ControlLoop for IdleCurrentSensor<'a> {
-    fn commutate(
-        &mut self,
-        current_sensor: &CurrentSensor<current_sensing::Sampling>,
-    ) -> LoopState {
+    fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
         self.loop_count += 1;
+        let current_sensor = &hardware.current_sensor;
         self.sample += current_sensor.sample();
         match self.loop_count {
             x if x >= self.total_counts => LoopState::Finished,
@@ -130,18 +115,18 @@ fn ADC1_2() {
 
     // If there's a control callback, call it. Otherwise just idle.
     let mut loop_vars = CONTROL_LOOP.lock();
-    let loop_vars = loop_vars.as_mut().expect("Loop variables not set");
+    let mut loop_vars = loop_vars.as_mut().expect("Loop variables not set");
 
     // Required otherwise the ADC will immediately trigger another interrupt, regardless of whether
     // the IRQ was cleared in the NVIC above.
-    loop_vars.current_sensor.acknowledge_eos();
+    loop_vars.hw.current_sensor.acknowledge_eos();
 
     let commutator = match loop_vars.control_loop {
         Some(ref mut x) => x,
         _ => return,
     };
 
-    match commutator.commutate(&loop_vars.current_sensor) {
+    match commutator.commutate(&mut loop_vars.hw) {
         LoopState::Finished => {
             commutator.finished();
             loop_vars.control_loop = None;

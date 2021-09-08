@@ -1,6 +1,6 @@
 use crate::comms::fdcan::{Fdcan, FdcanMessage, Running, FDCAN_INTERRUPTS};
-use crate::commutation::{ControlLoopVars, CONTROL_LOOP};
-use crate::current_sensing::{self, CurrentSensor};
+use crate::commutation::{ControlHardware, ControlLoopVars, CONTROL_LOOP};
+use crate::current_sensing;
 use crate::memory::initialize_heap;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
@@ -9,11 +9,7 @@ use crate::{
     block_until,
     comms::fdcan::{self, FDCAN_RECEIVE_BUF, FDCAN_SHARE},
 };
-use crate::{
-    block_while,
-    ic::drv8323rs,
-    ic::ma702::{self, Ma702, Streaming},
-};
+use crate::{block_while, ic::drv8323rs, ic::ma702};
 extern crate alloc;
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
@@ -49,11 +45,8 @@ pub struct Init {
 }
 
 pub struct Ready {
-    pub ma702: Ma702<Streaming>,
     pub drv: Drv8323rs<drv8323rs::Ready>,
     pub gpioa: device::GPIOA,
-    pub tim1: device::TIM1,
-    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
 }
 
 pub fn take_hardware() -> Driver<Init> {
@@ -637,13 +630,19 @@ impl Driver<Init> {
         let _cos: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
         let _sin: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
 
+        *CONTROL_LOOP.lock() = Some(ControlLoopVars {
+            control_loop: None,
+            hw: ControlHardware {
+                current_sensor: current_sensor,
+                tim1: self.mode_state.tim1,
+                ma702,
+            },
+        });
+
         let new_self = Driver {
             mode_state: Ready {
-                ma702,
                 drv,
                 gpioa: self.mode_state.gpioa,
-                tim1: self.mode_state.tim1,
-                current_sensor,
             },
         };
         new_self
@@ -653,19 +652,20 @@ impl Driver<Init> {
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl Driver<Ready> {
     pub fn listen(self, mut comms_handler: impl FnMut(&mut Fdcan<Running>, &FdcanMessage)) {
-        *CONTROL_LOOP.lock() = Some(ControlLoopVars {
-            control_loop: None,
-            current_sensor: self.mode_state.current_sensor,
-        });
-
-        // Kick off tim1.
-        self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
-
-        // Now that the timer has started, enable the main output to allow current on the pins. If
-        // we do this before we enable the timer, we have the potential to get into a state where the
-        // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-        // current through any high phases to any low phases.
-        self.mode_state.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+        {
+            let mut control_vars = CONTROL_LOOP.lock();
+            let hw = &control_vars
+                .as_mut()
+                .expect("Control loop vars not ready")
+                .hw;
+            // Kick off the timer.
+            hw.tim1.cr1.modify(|_, w| w.cen().set_bit());
+            // Now that the timer has started, enable the main output to allow current on the pins. If
+            // we do this before we enable the timer, we have the potential to get into a state where the
+            // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+            // current through any high phases to any low phases.
+            hw.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+        };
 
         loop {
             // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 (Rx) from
