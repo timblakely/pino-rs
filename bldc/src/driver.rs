@@ -658,11 +658,10 @@ static CONTROL_LOOP: interrupts::InterruptBLock<Option<ControlLoopVars>> =
 pub struct Commutator {}
 
 impl Commutator {
-    pub fn set<'a>(commutator: Box<dyn ControlLoop + 'a>) {
+    pub fn set<'a>(commutator: impl ControlLoop + 'a) {
+        let boxed: Box<dyn ControlLoop> = Box::new(commutator);
         match *CONTROL_LOOP.lock() {
-            Some(ref mut v) => {
-                (*v).control_loop = unsafe { core::mem::transmute(Some(commutator)) }
-            }
+            Some(ref mut v) => (*v).control_loop = unsafe { core::mem::transmute(Some(boxed)) },
             None => panic!("Loop variables not set"),
         };
     }

@@ -5,8 +5,6 @@
 use core::mem::MaybeUninit;
 extern crate alloc;
 
-use alloc::boxed::Box;
-
 use bldc::{
     allocator::initialize_heap,
     comms::messages::{self, ExtendedFdcanFrame, Messages},
@@ -34,7 +32,7 @@ fn main() -> ! {
     driver.listen(|fdcan, message| {
         match Messages::unpack_fdcan(message) {
             Some(Messages::IdleCurrentSense(m)) => {
-                let acc = Box::new(CallbackCurrentSensor::new(m.duration, |w| {
+                let acc = CallbackCurrentSensor::new(m.duration, |w| {
                     fdcan.send_message(
                         messages::Currents {
                             phase_a: w.phase_a,
@@ -43,7 +41,7 @@ fn main() -> ! {
                         }
                         .pack(),
                     );
-                }));
+                });
                 driver::Commutator::set(acc);
             }
             _ => (),

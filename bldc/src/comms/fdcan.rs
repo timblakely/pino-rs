@@ -271,8 +271,6 @@ impl Fdcan<Running> {
             None => panic!("Couldn't get tx buffer"),
         };
     }
-    // 0b01000000_00000000_00000000_00001101
-
     // TODO(blakely): Move to an actual TxFifo struct/impl
     fn next_tx(&self) -> Option<usize> {
         // TODO(blakely): Handle the case where we're sending too many messages at once and the FIFO
