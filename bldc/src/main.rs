@@ -3,7 +3,7 @@
 #![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::messages::{self, ExtendedFdcanFrame, Messages},
+    comms::messages::{ExtendedFdcanFrame, Messages},
     commutation::{CallbackCurrentSensor, Commutator},
     driver,
 };
@@ -17,19 +17,16 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 // here...
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    // Acquire the driver.
     let driver = driver::take_hardware().configure_peripherals();
+
+    // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
+        // We've received a message from the
         match Messages::unpack_fdcan(message) {
             Some(Messages::IdleCurrentSense(m)) => {
-                let acc = CallbackCurrentSensor::new(m.duration, |w| {
-                    fdcan.send_message(
-                        messages::Currents {
-                            phase_a: w.phase_a,
-                            phase_b: w.phase_b,
-                            phase_c: w.phase_c,
-                        }
-                        .pack(),
-                    );
+                let acc = CallbackCurrentSensor::new(m.duration, |measurement| {
+                    fdcan.send_message(measurement.pack());
                 });
                 Commutator::set(acc);
             }
