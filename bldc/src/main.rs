@@ -34,19 +34,16 @@ fn main() -> ! {
     driver.listen(|fdcan, message| {
         match Messages::unpack_fdcan(message) {
             Some(Messages::IdleCurrentSense(m)) => {
-                let acc = Box::new(CallbackCurrentSensor::new(
-                    m.duration,
-                    Box::new(|w| {
-                        fdcan.send_message(
-                            messages::Currents {
-                                phase_a: w.phase_a,
-                                phase_b: w.phase_b,
-                                phase_c: w.phase_c,
-                            }
-                            .pack(),
-                        );
-                    }),
-                ));
+                let acc = Box::new(CallbackCurrentSensor::new(m.duration, |w| {
+                    fdcan.send_message(
+                        messages::Currents {
+                            phase_a: w.phase_a,
+                            phase_b: w.phase_b,
+                            phase_c: w.phase_c,
+                        }
+                        .pack(),
+                    );
+                }));
                 driver::Commutator::set(acc);
             }
             _ => (),

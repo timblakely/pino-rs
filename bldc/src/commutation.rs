@@ -82,13 +82,14 @@ pub struct CallbackCurrentSensor<'a> {
 impl<'a> CallbackCurrentSensor<'a> {
     pub fn new(
         duration: f32,
-        callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
-    ) -> CallbackCurrentSensor {
+        // callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
+        callback: impl for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send,
+    ) -> CallbackCurrentSensor<'a> {
         CallbackCurrentSensor {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             sample: CurrentMeasurement::new(),
-            callback,
+            callback: Box::new(callback),
         }
     }
 }
