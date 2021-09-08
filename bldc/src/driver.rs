@@ -1,7 +1,7 @@
 use crate::comms::fdcan::{Fdcan, FdcanMessage, Running, FDCAN_INTERRUPTS};
-use crate::commutation::{ControlLoop, LoopState};
+use crate::commutation::{ControlLoopVars, LoopState, CONTROL_LOOP};
 use crate::current_sensing::{self, CurrentSensor};
-use crate::util::interrupts;
+use crate::memory::initialize_heap;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
@@ -15,7 +15,6 @@ use crate::{
     ic::ma702::{self, Ma702, Streaming},
 };
 extern crate alloc;
-use alloc::boxed::Box;
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
 use fixed::types::I1F31;
@@ -58,6 +57,10 @@ pub struct Ready {
 }
 
 pub fn take_hardware() -> Driver<Init> {
+    // First, initialize the heap so that we can set the control loop callback dynamically. We do
+    // this as early as possible
+    initialize_heap();
+
     let cp = cm::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();
 
@@ -644,26 +647,6 @@ impl Driver<Init> {
             },
         };
         new_self
-    }
-}
-
-struct ControlLoopVars {
-    control_loop: Option<Box<dyn ControlLoop>>,
-    current_sensor: CurrentSensor<current_sensing::Sampling>,
-}
-
-static CONTROL_LOOP: interrupts::InterruptBLock<Option<ControlLoopVars>> =
-    interrupts::InterruptBLock::new(device::interrupt::ADC1_2, None);
-
-pub struct Commutator {}
-
-impl Commutator {
-    pub fn set<'a>(commutator: impl ControlLoop + 'a) {
-        let boxed: Box<dyn ControlLoop> = Box::new(commutator);
-        match *CONTROL_LOOP.lock() {
-            Some(ref mut v) => (*v).control_loop = unsafe { core::mem::transmute(Some(boxed)) },
-            None => panic!("Loop variables not set"),
-        };
     }
 }
 

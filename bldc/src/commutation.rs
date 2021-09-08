@@ -1,6 +1,7 @@
 use crate::{
     current_sensing::{self, CurrentMeasurement, CurrentSensor},
     ic::ma702::{Ma702, Streaming},
+    util::interrupts::InterruptBLock,
 };
 extern crate alloc;
 use alloc::boxed::Box;
@@ -21,6 +22,28 @@ pub struct ControlParameters {
     pub pwm_duty: f32,
     pub d: f32,
     pub q: f32,
+}
+
+///////
+
+pub struct ControlLoopVars {
+    pub control_loop: Option<Box<dyn ControlLoop>>,
+    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
+}
+
+pub static CONTROL_LOOP: InterruptBLock<Option<ControlLoopVars>> =
+    InterruptBLock::new(device::interrupt::ADC1_2, None);
+
+pub struct Commutator {}
+
+impl Commutator {
+    pub fn set<'a>(commutator: impl ControlLoop + 'a) {
+        let boxed: Box<dyn ControlLoop> = Box::new(commutator);
+        match *CONTROL_LOOP.lock() {
+            Some(ref mut v) => (*v).control_loop = unsafe { core::mem::transmute(Some(boxed)) },
+            None => panic!("Loop variables not set"),
+        };
+    }
 }
 
 pub enum LoopState {
