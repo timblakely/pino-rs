@@ -1,5 +1,5 @@
 use crate::comms::fdcan::{Fdcan, FdcanMessage, Running, FDCAN_INTERRUPTS};
-use crate::commutation::{ControlLoopVars, LoopState, CONTROL_LOOP};
+use crate::commutation::{ControlLoopVars, CONTROL_LOOP};
 use crate::current_sensing::{self, CurrentSensor};
 use crate::memory::initialize_heap;
 use crate::util::stm32::{
@@ -19,8 +19,8 @@ use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
 use fixed::types::I1F31;
 use ringbuffer::RingBufferRead;
-use stm32g4::stm32g474::{self as device, interrupt};
-use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, disable_irq, enable_irq};
+use stm32g4::stm32g474 as device;
+use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
 pub struct Driver<S> {
@@ -693,47 +693,5 @@ impl Driver<Ready> {
                 },
             );
         }
-    }
-}
-
-#[interrupt]
-fn ADC1_2() {
-    // Clear the IRQ so it doesn't immediately fire again.
-    clear_pending_irq(device::Interrupt::ADC1_2);
-    // Main control loop.
-    unsafe {
-        *(0x4800_0418 as *mut u32) = 1 << 9;
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
-    }
-
-    // If there's a control callback, call it. Otherwise just idle.
-    let mut loop_vars = CONTROL_LOOP.lock();
-    let loop_vars = loop_vars.as_mut().expect("Loop variables not set");
-
-    // Required otherwise the ADC will immediately trigger another interrupt, regardless of whether
-    // the IRQ was cleared in the NVIC above.
-    loop_vars.current_sensor.acknowledge_eos();
-
-    let commutator = match loop_vars.control_loop {
-        Some(ref mut x) => x,
-        _ => return,
-    };
-
-    match commutator.commutate(&loop_vars.current_sensor) {
-        LoopState::Finished => {
-            commutator.finished();
-            loop_vars.control_loop = None;
-        }
-        _ => return,
     }
 }

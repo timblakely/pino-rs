@@ -3,9 +3,10 @@ use crate::{
     ic::ma702::{Ma702, Streaming},
     util::interrupts::InterruptBLock,
 };
+use stm32g4::stm32g474::{self as device, interrupt};
 extern crate alloc;
 use alloc::boxed::Box;
-use stm32g4::stm32g474 as device;
+use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct Hardware {
@@ -51,12 +52,15 @@ pub enum LoopState {
     Finished,
 }
 
+// Trait that any control loops need to implement.
 pub trait ControlLoop: Send {
     fn commutate(&mut self, current_sensor: &CurrentSensor<current_sensing::Sampling>)
         -> LoopState;
     fn finished(&mut self) {}
 }
 
+// During commutation, no PWM is performed. The current is sampled once at each loop for a given
+// duration then averaged across all samples.
 pub struct IdleCurrentSensor<'a> {
     total_counts: u32,
     loop_count: u32,
@@ -95,5 +99,53 @@ impl<'a> ControlLoop for IdleCurrentSensor<'a> {
     fn finished(&mut self) {
         self.sample /= self.loop_count;
         (self.callback)(&self.sample);
+    }
+}
+
+/////
+
+// Interrupt handler triggered by TIM1[CH4]'s tim_trgo2. Under normal circumstances this function
+// will be called continuously, regardless of the control loop in place. Note that the control loop
+// itself can modify the timings here since it has access to the underlying timer. Thus it's
+// important that any modifications that are done by the control loop are un-done on completion.
+#[interrupt]
+fn ADC1_2() {
+    // Clear the IRQ so it doesn't immediately fire again.
+    clear_pending_irq(device::Interrupt::ADC1_2);
+    // Main control loop.
+    unsafe {
+        *(0x4800_0418 as *mut u32) = 1 << 9;
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
+    }
+
+    // If there's a control callback, call it. Otherwise just idle.
+    let mut loop_vars = CONTROL_LOOP.lock();
+    let loop_vars = loop_vars.as_mut().expect("Loop variables not set");
+
+    // Required otherwise the ADC will immediately trigger another interrupt, regardless of whether
+    // the IRQ was cleared in the NVIC above.
+    loop_vars.current_sensor.acknowledge_eos();
+
+    let commutator = match loop_vars.control_loop {
+        Some(ref mut x) => x,
+        _ => return,
+    };
+
+    match commutator.commutate(&loop_vars.current_sensor) {
+        LoopState::Finished => {
+            commutator.finished();
+            loop_vars.control_loop = None;
+        }
+        _ => return,
     }
 }
