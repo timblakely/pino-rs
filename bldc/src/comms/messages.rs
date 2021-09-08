@@ -19,8 +19,15 @@ pub struct SetCurrents {
 
 pub struct EStop {}
 
+pub struct Currents {
+    pub phase_a: f32,
+    pub phase_b: f32,
+    pub phase_c: f32,
+}
+
 pub enum Messages {
     IdleCurrentSense(IdleCurrentSense),
+    Currents(Currents),
     ForcePwm(ForcePwm),
     SetCurrents(SetCurrents),
     EStop(EStop),
@@ -104,6 +111,23 @@ impl ExtendedFdcanFrame for SetCurrents {
     }
 }
 
+impl ExtendedFdcanFrame for Currents {
+    fn unpack(_: &FdcanMessage) -> Self {
+        panic!("Unpack not supported")
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        FdcanMessage::new(
+            0xD,
+            [
+                self.phase_a.to_bits(),
+                self.phase_b.to_bits(),
+                self.phase_c.to_bits(),
+            ],
+        )
+    }
+}
+
 impl Messages {
     pub fn unpack_fdcan(message: &FdcanMessage) -> Option<Self> {
         match message.id {
@@ -111,6 +135,7 @@ impl Messages {
             0xA => Some(Self::ForcePwm(ForcePwm::unpack(message))),
             0xB => Some(Self::SetCurrents(SetCurrents::unpack(message))),
             0xC => Some(Self::IdleCurrentSense(IdleCurrentSense::unpack(message))),
+            0xD => Some(Self::Currents(Currents::unpack(message))),
             _ => None,
         }
     }

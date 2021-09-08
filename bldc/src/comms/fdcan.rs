@@ -1,5 +1,5 @@
 //! FDCAN implementation
-use crate::{block_until, block_while, driver::FdcanShared};
+use crate::{block_until, block_while};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
@@ -16,6 +16,14 @@ pub mod rx_fifo;
 pub mod standard_filter;
 pub mod tx_event;
 pub mod tx_fifo;
+
+type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<FdcanMessage, 16>;
+pub static FDCAN_RECEIVE_BUF: SpinLock<Option<&'static mut ReceiveBuffer>> = SpinLock::new(None);
+pub static FDCAN_SHARE: SpinLock<Option<Fdcan<Running>>> = SpinLock::new(None);
+pub const FDCAN_INTERRUPTS: [device::Interrupt; 2] = [
+    device::interrupt::FDCAN1_INTR0_IT,
+    device::interrupt::FDCAN1_INTR1_IT,
+];
 
 #[repr(C)]
 pub struct SramBlock {
@@ -250,7 +258,7 @@ impl Fdcan<Init> {
 }
 
 impl Fdcan<Running> {
-    pub fn send_message(&mut self, message: FdcanMessage) -> &mut Self {
+    pub fn send_message(&mut self, message: FdcanMessage) {
         match self.next_tx() {
             Some(idx) => {
                 self.sram.tx_buffers[idx].assign(&message);
@@ -262,9 +270,8 @@ impl Fdcan<Running> {
             // TODO(blakely): Some actual proper error handling here...
             None => panic!("Couldn't get tx buffer"),
         };
-
-        self
     }
+    // 0b01000000_00000000_00000000_00001101
 
     // TODO(blakely): Move to an actual TxFifo struct/impl
     fn next_tx(&self) -> Option<usize> {
@@ -272,17 +279,10 @@ impl Fdcan<Running> {
         // can't keep up.
         Some(self.peripheral.txfqs.read().tfqpi().bits() as usize)
     }
-
-    pub fn donate(self) -> FdcanShared {
-        FdcanShared {
-            fdcan: self.peripheral,
-            sram: self.sram,
-        }
-    }
 }
 
 fn fdcan1_tx_isr() {
-    let fdcan = &sync::acquire_hw(&FDCANSHARE).fdcan;
+    let fdcan = &sync::acquire_hw(&FDCAN_SHARE).peripheral;
     let get_idx = fdcan.txefs.read().efgi().bits();
     // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
     // value retrieved from the get index it's fine.
@@ -294,10 +294,10 @@ fn fdcan1_tx_isr() {
 }
 
 fn fdcan1_rx_isr() {
-    let shared = &sync::acquire_hw(&FDCANSHARE);
+    let fdcan = &sync::acquire_hw(&FDCAN_SHARE);
 
     // Figure out get index
-    let get_idx = shared.fdcan.rxf0s.read().f0gi().bits();
+    let get_idx = fdcan.peripheral.rxf0s.read().f0gi().bits();
     {
         // Lock the receive buffer. Technically only used in the main thread, but good practice to
         // drop locks as soon as you can.
@@ -307,7 +307,7 @@ fn fdcan1_rx_isr() {
         let receive_buf = guard
             .as_mut()
             .expect("FDCAN RX ISR handled prior to populating buffer");
-        let rx_buffer = &shared.sram.rx_fifo0[get_idx as usize];
+        let rx_buffer = &fdcan.sram.rx_fifo0[get_idx as usize];
         (*receive_buf).push(FdcanMessage {
             id: rx_buffer.id(),
             data: *rx_buffer.data(),
@@ -317,12 +317,12 @@ fn fdcan1_rx_isr() {
     // Acknowledge the peripheral that we've read the message.
     // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
     // value retrieved from the get index it's fine.
-    shared
-        .fdcan
+    fdcan
+        .peripheral
         .rxf0a
         .modify(|_, w| unsafe { w.f0ai().bits(get_idx) });
     // Finally, clear the fact that we've received an RxFIFO0 interrupt
-    shared.fdcan.ir.modify(|_, w| w.rf0n().set_bit());
+    fdcan.peripheral.ir.modify(|_, w| w.rf0n().set_bit());
 }
 
 #[derive(Debug)]
@@ -346,11 +346,6 @@ impl FdcanMessage {
         message
     }
 }
-
-type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<FdcanMessage, 16>;
-pub static FDCAN_RECEIVE_BUF: SpinLock<Option<&'static mut ReceiveBuffer>> = SpinLock::new(None);
-
-pub static FDCANSHARE: SpinLock<Option<FdcanShared>> = SpinLock::new(None);
 
 fn init_buffer() -> &'static mut ReceiveBuffer {
     static TAKEN: AtomicBool = AtomicBool::new(false);

@@ -9,8 +9,8 @@ use alloc::boxed::Box;
 
 use bldc::{
     allocator::initialize_heap,
-    comms::messages::Messages,
-    commutation::{ControlParameters, IdleCurrentSensor},
+    comms::messages::{self, ExtendedFdcanFrame, Messages},
+    commutation::CallbackCurrentSensor,
     driver,
 };
 
@@ -18,9 +18,6 @@ use bldc::{
 use panic_halt as _;
 #[cfg(feature = "panic-itm")]
 use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
-
-// TODO(blakely): Implement emergency stop.
-fn emergency_stop() {}
 
 // Heap is a bit scary
 static mut HEAP: [MaybeUninit<u8>; 1 << 12] = [MaybeUninit::<u8>::uninit(); 1 << 12];
@@ -33,29 +30,26 @@ fn main() -> ! {
         initialize_heap(&mut HEAP);
     }
 
-    // let initial_state = ControlParameters {
-    //     pwm_duty: 0f32,
-    //     q: 0f32,
-    //     d: 0f32,
-    // };
-
     let driver = driver::take_hardware().configure_peripherals();
-
-    // Allocate the ACS on the heap.
-
-    driver.listen(|message| {
+    driver.listen(|fdcan, message| {
         match Messages::unpack_fdcan(message) {
-            // Some(Messages::ForcePwm(msg)) => control_params.pwm_duty = msg.pwm_duty,
-            // Some(Messages::EStop(_)) => emergency_stop(),
-            // Some(Messages::SetCurrents(msg)) => {
-            //     control_params.q = msg.q;
-            //     control_params.d = msg.d;
-            // }
             Some(Messages::IdleCurrentSense(m)) => {
-                let acc = Box::new(IdleCurrentSensor::new(m.duration));
+                let acc = Box::new(CallbackCurrentSensor::new(
+                    m.duration,
+                    Box::new(|w| {
+                        fdcan.send_message(
+                            messages::Currents {
+                                phase_a: w.phase_a,
+                                phase_b: w.phase_b,
+                                phase_c: w.phase_c,
+                            }
+                            .pack(),
+                        );
+                    }),
+                ));
                 driver::Commutator::set(acc);
             }
-            _ => {}
+            _ => (),
         };
     });
     loop {}

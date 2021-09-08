@@ -2,6 +2,8 @@ use crate::{
     current_sensing::{self, CurrentMeasurement, CurrentSensor},
     ic::ma702::{Ma702, Streaming},
 };
+extern crate alloc;
+use alloc::boxed::Box;
 use stm32g4::stm32g474 as device;
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
@@ -44,7 +46,7 @@ impl IdleCurrentSensor {
     }
 }
 
-pub trait ControlLoop: Send + Sync {
+pub trait ControlLoop: Send {
     fn commutate(&mut self, current_sensor: &CurrentSensor<current_sensing::Sampling>)
         -> LoopState;
     fn finished(&mut self) {}
@@ -67,5 +69,45 @@ impl ControlLoop for IdleCurrentSensor {
         self.sample /= self.loop_count;
         let mut _asdf = 0;
         _asdf += 1;
+    }
+}
+
+pub struct CallbackCurrentSensor<'a> {
+    total_counts: u32,
+    loop_count: u32,
+    sample: CurrentMeasurement,
+    callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
+}
+
+impl<'a> CallbackCurrentSensor<'a> {
+    pub fn new(
+        duration: f32,
+        callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
+    ) -> CallbackCurrentSensor {
+        CallbackCurrentSensor {
+            total_counts: (40_000 as f32 * duration) as u32,
+            loop_count: 0,
+            sample: CurrentMeasurement::new(),
+            callback,
+        }
+    }
+}
+
+impl<'a> ControlLoop for CallbackCurrentSensor<'a> {
+    fn commutate(
+        &mut self,
+        current_sensor: &CurrentSensor<current_sensing::Sampling>,
+    ) -> LoopState {
+        self.loop_count += 1;
+        self.sample += current_sensor.sample();
+        match self.loop_count {
+            x if x >= self.total_counts => LoopState::Finished,
+            _ => LoopState::Running,
+        }
+    }
+
+    fn finished(&mut self) {
+        self.sample /= self.loop_count;
+        (self.callback)(&self.sample);
     }
 }

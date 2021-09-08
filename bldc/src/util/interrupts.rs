@@ -5,7 +5,7 @@ use stm32g4::stm32g474::Interrupt;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
 
-pub fn free_from<I: InterruptNumber, T: Send, F: FnOnce(SpinLockGuard<T>)>(
+pub fn block_interrupt<I: InterruptNumber, T: Send, F: FnOnce(SpinLockGuard<T>)>(
     irq: I,
     lock: &SpinLock<Option<T>>,
     f: F,
@@ -23,6 +23,35 @@ pub fn free_from<I: InterruptNumber, T: Send, F: FnOnce(SpinLockGuard<T>)>(
     if enabled {
         enable_irq(irq);
     }
+}
+
+pub fn block_interrupts<
+    I: InterruptNumber,
+    T: Send,
+    F: FnOnce(SpinLockGuard<T>),
+    const N: usize,
+>(
+    irqs: [I; N],
+    lock: &SpinLock<Option<T>>,
+    f: F,
+) {
+    let enabled_iter = irqs.map(|irq| NVIC::is_enabled(irq));
+    irqs.map(|irq| disable_irq(irq));
+    f(SpinLockGuard::map(
+        lock.try_lock()
+            .expect("Lock held prior to entering critical section"),
+        |o| {
+            o.as_mut()
+                .expect("Critical section entered without HW available")
+        },
+    ));
+    irqs.iter()
+        .zip(enabled_iter.iter())
+        .for_each(|(irq, enabled)| {
+            if *enabled {
+                enable_irq(*irq)
+            }
+        });
 }
 
 pub enum InterruptState {

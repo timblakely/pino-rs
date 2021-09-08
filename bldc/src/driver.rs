@@ -1,14 +1,13 @@
-use crate::comms::fdcan::FdcanMessage;
-use crate::commutation::{ControlLoop, ControlParameters, Hardware, LoopState};
+use crate::comms::fdcan::{Fdcan, FdcanMessage, Running, FDCAN_INTERRUPTS};
+use crate::commutation::{ControlLoop, LoopState};
 use crate::current_sensing::{self, CurrentSensor};
-use crate::util::buffered_state::{BufferedState, StateReader};
 use crate::util::interrupts;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
 use crate::{
     block_until,
-    comms::fdcan::{self, Sram, FDCANSHARE, FDCAN_RECEIVE_BUF},
+    comms::fdcan::{self, FDCAN_RECEIVE_BUF, FDCAN_SHARE},
 };
 use crate::{
     block_while,
@@ -23,8 +22,6 @@ use fixed::types::I1F31;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, disable_irq, enable_irq};
-use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
-
 const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
 pub struct Driver<S> {
@@ -592,9 +589,10 @@ impl Driver<Init> {
             .configure_interrupts()
             .fifo_mode()
             .start();
-        *FDCANSHARE.try_lock().unwrap() = Some(fdcan.donate());
 
         fdcan::init_receive_buf();
+
+        *FDCAN_SHARE.lock() = Some(fdcan);
 
         // Tx IRQ
         enable_irq(device::Interrupt::FDCAN1_INTR0_IT);
@@ -657,21 +655,14 @@ struct ControlLoopVars {
 static CONTROL_LOOP: interrupts::InterruptBLock<Option<ControlLoopVars>> =
     interrupts::InterruptBLock::new(device::interrupt::ADC1_2, None);
 
-// static INTERRUPT_DATA: SpinLock<
-//     Option<(
-//         Option<Box<dyn Commutation>>,
-//         Hardware,
-//         StateReader<ControlParameters>,
-//     )>,
-// > = SpinLock::new(None);
-// static CONTROL_SHARED: SpinLock<Option<BufferedState<ControlParameters>>> = SpinLock::new(None);
-
 pub struct Commutator {}
 
 impl Commutator {
-    pub fn set(commutator: Box<dyn ControlLoop>) {
+    pub fn set<'a>(commutator: Box<dyn ControlLoop + 'a>) {
         match *CONTROL_LOOP.lock() {
-            Some(ref mut v) => (*v).control_loop = Some(commutator),
+            Some(ref mut v) => {
+                (*v).control_loop = unsafe { core::mem::transmute(Some(commutator)) }
+            }
             None => panic!("Loop variables not set"),
         };
     }
@@ -679,53 +670,7 @@ impl Commutator {
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl Driver<Ready> {
-    pub fn listen(
-        mut self,
-        // initial_state: ControlParameters,
-        // mut comms_handler: impl FnMut(&mut Driver<Ready>, &FdcanMessage, &mut ControlParameters),
-        mut comms_handler: impl FnMut(&FdcanMessage),
-    ) {
-        // Since the interrupt handler can interrupt the main thread's modifications of any shared
-        // state, we use a double-buffer and atomic swap to ensure a full update.
-        // *CONTROL_SHARED.try_lock().unwrap() =
-        //     Some(BufferedState::<ControlParameters>::new(initial_state));
-        // Split the two states into a read-only control state that has read priority, and a mutable
-        // state used for communication that writes the unused state and atomically swaps on
-        // completion.
-        // let mut shared_state = SpinLockGuard::map(
-        //     CONTROL_SHARED.try_lock().expect("Shared state lock held"),
-        //     |o| o.as_mut().expect("Shared state not initialized"),
-        // );
-        // let (control_params, mut comms_params) = shared_state.split();
-
-        // Pass off both the control parameters and hardware to the commutation interrupt handler.
-        // {
-        //     let mut shared = INTERRUPT_DATA.lock();
-        //     *shared = Some((
-        //         None,
-        //         Hardware {
-        //             tim1: self.mode_state.tim1,
-        //             ma702: self.mode_state.ma702,
-        //             current_sensor: self.mode_state.current_sensor,
-        //             sign: -1.,
-        //             square_wave_state: 0,
-        //         },
-        //         control_params,
-        //     ));
-        // }
-        // We don't want the timer to fire while we've got this lock, so disable the interrupt while
-        // we're starting it up.
-        // interrupts::free_from(device::interrupt::ADC1_2, &INTERRUPT_DATA, |shared| {
-        //     let (_, hardware, _) = &*shared;
-        //     // Kick off tim1.
-        //     hardware.tim1.cr1.modify(|_, w| w.cen().set_bit());
-        //     // Now that the timer has started, enable the main output to allow current on the pins. If
-        //     // we do this before we enable the time, we have the potential to get into a state where the
-        //     // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-        //     // current through any high phases to any low phases.
-        //     hardware.tim1.bdtr.modify(|_, w| w.moe().set_bit());
-        // });
-
+    pub fn listen(self, mut comms_handler: impl FnMut(&mut Fdcan<Running>, &FdcanMessage)) {
         *CONTROL_LOOP.lock() = Some(ControlLoopVars {
             control_loop: None,
             current_sensor: self.mode_state.current_sensor,
@@ -735,13 +680,13 @@ impl Driver<Ready> {
         self.mode_state.tim1.cr1.modify(|_, w| w.cen().set_bit());
 
         // Now that the timer has started, enable the main output to allow current on the pins. If
-        // we do this before we enable the time, we have the potential to get into a state where the
+        // we do this before we enable the timer, we have the potential to get into a state where the
         // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
         // current through any high phases to any low phases.
         self.mode_state.tim1.bdtr.modify(|_, w| w.moe().set_bit());
 
         loop {
-            // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 from
+            // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 (Rx) from
             // firing - the only other interrupt that shares this particular buffer - ensuring
             // we aren't preempted when reading from it. This is fine in general since the
             // peripheral itself has an internal buffer, and as long as we can clear the backlog
@@ -749,12 +694,19 @@ impl Driver<Ready> {
             // could just process a single message here to make sure that we only hold this lock
             // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
             // form though...
-            crate::util::interrupts::free_from(
-                device::interrupt::FDCAN1_INTR1_IT,
+            crate::util::interrupts::block_interrupts(
+                FDCAN_INTERRUPTS,
                 &FDCAN_RECEIVE_BUF,
                 |mut buf| {
                     while let Some(message) = buf.dequeue_ref() {
-                        comms_handler(&message);
+                        // TODO(blakely): Combine FDCAN_RECEIVE_BUF and FDCAN_SHARE
+                        crate::util::interrupts::block_interrupts(
+                            FDCAN_INTERRUPTS,
+                            &FDCAN_SHARE,
+                            |mut fdcan| {
+                                comms_handler(&mut fdcan, &message);
+                            },
+                        );
                     }
                 },
             );
@@ -802,9 +754,4 @@ fn ADC1_2() {
         }
         _ => return,
     }
-}
-
-pub struct FdcanShared {
-    pub sram: Sram,
-    pub fdcan: device::FDCAN1,
 }
