@@ -4,7 +4,7 @@
 
 use bldc::{
     comms::messages::{ExtendedFdcanFrame, Messages},
-    commutation::{CallbackCurrentSensor, Commutator},
+    commutation::{Commutator, IdleCurrentSensor},
     driver,
 };
 
@@ -22,13 +22,12 @@ fn main() -> ! {
 
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
-        // We've received a message from the
+        // We've received a message via the FDCAN.
         match Messages::unpack_fdcan(message) {
             Some(Messages::IdleCurrentSense(m)) => {
-                let acc = CallbackCurrentSensor::new(m.duration, |measurement| {
+                Commutator::set(IdleCurrentSensor::new(m.duration, |measurement| {
                     fdcan.send_message(measurement.pack());
-                });
-                Commutator::set(acc);
+                }));
             }
             _ => (),
         };

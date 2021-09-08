@@ -7,6 +7,7 @@ pub struct IdleCurrentSense {
     pub duration: f32,
 }
 
+// Emergency Stop message.
 pub struct EStop {}
 
 pub enum Messages {

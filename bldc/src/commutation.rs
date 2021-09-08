@@ -49,24 +49,6 @@ impl Commutator {
 pub enum LoopState {
     Running,
     Finished,
-    Idle,
-}
-
-pub struct IdleCurrentSensor {
-    total_counts: u32,
-    loop_count: u32,
-    sample: CurrentMeasurement,
-}
-
-impl IdleCurrentSensor {
-    pub fn new(duration: f32) -> IdleCurrentSensor {
-        // TODO(blakely): assumes 40kHz loop
-        IdleCurrentSensor {
-            total_counts: (40_000 as f32 * duration) as u32,
-            loop_count: 0,
-            sample: CurrentMeasurement::new(),
-        }
-    }
 }
 
 pub trait ControlLoop: Send {
@@ -75,40 +57,20 @@ pub trait ControlLoop: Send {
     fn finished(&mut self) {}
 }
 
-impl ControlLoop for IdleCurrentSensor {
-    fn commutate(
-        &mut self,
-        current_sensor: &CurrentSensor<current_sensing::Sampling>,
-    ) -> LoopState {
-        self.loop_count += 1;
-        self.sample += current_sensor.sample();
-        match self.loop_count {
-            x if x >= self.total_counts => LoopState::Finished,
-            _ => LoopState::Running,
-        }
-    }
-
-    fn finished(&mut self) {
-        self.sample /= self.loop_count;
-        let mut _asdf = 0;
-        _asdf += 1;
-    }
-}
-
-pub struct CallbackCurrentSensor<'a> {
+pub struct IdleCurrentSensor<'a> {
     total_counts: u32,
     loop_count: u32,
     sample: CurrentMeasurement,
     callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
 }
 
-impl<'a> CallbackCurrentSensor<'a> {
+impl<'a> IdleCurrentSensor<'a> {
     pub fn new(
         duration: f32,
         // callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
         callback: impl for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send,
-    ) -> CallbackCurrentSensor<'a> {
-        CallbackCurrentSensor {
+    ) -> IdleCurrentSensor<'a> {
+        IdleCurrentSensor {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             sample: CurrentMeasurement::new(),
@@ -117,7 +79,7 @@ impl<'a> CallbackCurrentSensor<'a> {
     }
 }
 
-impl<'a> ControlLoop for CallbackCurrentSensor<'a> {
+impl<'a> ControlLoop for IdleCurrentSensor<'a> {
     fn commutate(
         &mut self,
         current_sensor: &CurrentSensor<current_sensing::Sampling>,
