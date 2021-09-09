@@ -31,8 +31,8 @@ pub struct Configuring {}
 impl CurrentSensorState for Configuring {}
 pub struct Calibrating {}
 impl CurrentSensorState for Calibrating {}
-pub struct Sampling {}
-impl CurrentSensorState for Sampling {}
+pub struct Ready {}
+impl CurrentSensorState for Ready {}
 
 pub fn new(
     phase_a: device::ADC1,
@@ -412,11 +412,14 @@ impl CurrentSensor<Configuring> {
         self
     }
 
-    pub fn calibrate(self, samples_to_average: u32) -> CurrentSensor<Sampling> {
-        // Sample zero/resting state currents
-        let mut phase_a_offset: f32 = 0.;
-        let mut phase_b_offset: f32 = 0.;
-        let mut phase_c_offset: f32 = 0.;
+    pub fn ready(self) -> CurrentSensor<Ready> {
+        // Clear pending signals
+        self.phase_a
+            .isr
+            .modify(|_, w| w.eosmp().set_bit().eoc().set_bit().ovr().set_bit());
+        // Enable interrupt on ADC1 EOS. Only needed for ADC1, since 2 and 3 are sync'd to the same
+        // tim_trgo2.
+        self.phase_a.ier.modify(|_, w| w.eosie().enabled());
 
         // Start continuous sampling on v_bus and v_refint
         self.v_bus.cr.modify(|_, w| w.adstart().set_bit());
@@ -424,6 +427,44 @@ impl CurrentSensor<Configuring> {
         // Make sure we've got a reading on v_bus and v_refint
         block_until!(self.v_bus.isr.read().eoc().is_complete());
         block_until!(self.v_refint.isr.read().eoc().is_complete());
+
+        CurrentSensor {
+            phase_a: self.phase_a,
+            phase_a_offset: 0.,
+            phase_b: self.phase_b,
+            phase_b_offset: 0.,
+            phase_c: self.phase_c,
+            phase_c_offset: 0.,
+            sense_gain: self.sense_gain,
+            sense_v_ref: self.sense_v_ref,
+
+            v_bus: self.v_bus,
+            v_bus_gain: self.v_bus_gain,
+            v_refint: self.v_refint,
+
+            from_v_refint: self.from_v_refint,
+
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl CurrentSensor<Ready> {
+    pub fn acknowledge_eos(&mut self) {
+        // Clear the EOS flag from ADC1, what we're using to trigger the control loop interrupt.
+        // Note: `clear()` is a bad name, since it doesn't clear the _bit_, but clears the _flag_ by
+        // writing a 1.
+        self.phase_a.isr.modify(|_, w| w.eos().clear());
+    }
+
+    pub fn calibrate(&mut self, samples_to_average: u32) {
+        // Disable interrupt on ADC1 EOS
+        self.phase_a.ier.modify(|_, w| w.eosie().disabled());
+
+        // Sample zero/resting state currents
+        self.phase_a_offset = 0.;
+        self.phase_b_offset = 0.;
+        self.phase_c_offset = 0.;
 
         // Switch from whatever state we're in (expected to be tim_trgo2-based sampling) to
         // continuous conversion for calibration. Only relevant for the phases, since v_bus and
@@ -436,15 +477,15 @@ impl CurrentSensor<Configuring> {
             block_until!(self.phase_a.isr.read().eoc().is_complete());
             block_until!(self.phase_b.isr.read().eoc().is_complete());
             block_until!(self.phase_c.isr.read().eoc().is_complete());
-            let sample = sample(&self);
-            phase_a_offset += sample.phase_a;
-            phase_b_offset += sample.phase_b;
-            phase_c_offset += sample.phase_c;
+            let sample = sample_raw(&self);
+            self.phase_a_offset += sample.phase_a;
+            self.phase_b_offset += sample.phase_b;
+            self.phase_c_offset += sample.phase_c;
             blocking_sleep_us(1);
         }
-        phase_a_offset /= samples_to_average as f32;
-        phase_b_offset /= samples_to_average as f32;
-        phase_c_offset /= samples_to_average as f32;
+        self.phase_a_offset /= samples_to_average as f32;
+        self.phase_b_offset /= samples_to_average as f32;
+        self.phase_c_offset /= samples_to_average as f32;
 
         // Stop the ADCs
         self.phase_a.cr.modify(|_, w| w.adstp().set_bit());
@@ -466,39 +507,20 @@ impl CurrentSensor<Configuring> {
         // Enable interrupt on ADC1 EOS. Only needed for ADC1, since 2 and 3 are sync'd to the same
         // tim_trgo2.
         self.phase_a.ier.modify(|_, w| w.eosie().enabled());
-
-        // Start the reamining ADCs
-        CurrentSensor {
-            phase_a: self.phase_a,
-            phase_a_offset,
-            phase_b: self.phase_b,
-            phase_b_offset,
-            phase_c: self.phase_c,
-            phase_c_offset,
-            sense_gain: self.sense_gain,
-            sense_v_ref: self.sense_v_ref,
-
-            v_bus: self.v_bus,
-            v_bus_gain: self.v_bus_gain,
-            v_refint: self.v_refint,
-
-            from_v_refint: self.from_v_refint,
-
-            _marker: PhantomData,
-        }
     }
 }
 
-impl CurrentSensor<Sampling> {
-    pub fn acknowledge_eos(&mut self) {
-        // Clear the EOS flag from ADC1, what we're using to trigger the control loop interrupt.
-        // Note: `clear()` is a bad name, since it doesn't clear the _bit_, but clears the _flag_ by
-        // writing a 1.
-        self.phase_a.isr.modify(|_, w| w.eos().clear());
-    }
-}
-
+// Sample ADCs and offset current values by calibrated offsets.
 fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasurement {
+    let mut measurement = sample_raw(sensor);
+    measurement.phase_a -= sensor.phase_a_offset;
+    measurement.phase_b -= sensor.phase_b_offset;
+    measurement.phase_c -= sensor.phase_c_offset;
+    measurement
+}
+
+// Sample ADCs values directly, not applying any offsets.
+fn sample_raw<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasurement {
     let v_refint = sensor.v_refint.dr.read().bits() as u16;
     let sense_v_ref_over_2: f32 = sensor.sense_v_ref / 2.0;
 
@@ -509,9 +531,9 @@ fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasuremen
     let phase_a = sensor.phase_a.dr.read().rdata().bits();
     let phase_b = sensor.phase_b.dr.read().rdata().bits();
     let phase_c = sensor.phase_c.dr.read().rdata().bits();
-    let phase_a = calc_phase_current(phase_a) - sensor.phase_a_offset;
-    let phase_b = calc_phase_current(phase_b) - sensor.phase_b_offset;
-    let phase_c = calc_phase_current(phase_c) - sensor.phase_c_offset;
+    let phase_a = calc_phase_current(phase_a);
+    let phase_b = calc_phase_current(phase_b);
+    let phase_c = calc_phase_current(phase_c);
     let v_bus =
         (sensor.from_v_refint)(v_refint, sensor.v_bus.dr.read().bits() as u16) * sensor.v_bus_gain;
 
@@ -541,7 +563,7 @@ impl CurrentMeasurement {
     }
 }
 
-impl CurrentSensor<Sampling> {
+impl CurrentSensor<Ready> {
     pub fn sample(&self) -> CurrentMeasurement {
         sample(self)
     }

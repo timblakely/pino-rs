@@ -9,7 +9,7 @@ use alloc::boxed::Box;
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
 pub struct ControlHardware {
-    pub current_sensor: CurrentSensor<current_sensing::Sampling>,
+    pub current_sensor: CurrentSensor<current_sensing::Ready>,
     pub tim1: device::TIM1,
     pub ma702: Ma702<Streaming>,
 }

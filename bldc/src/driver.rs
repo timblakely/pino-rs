@@ -557,7 +557,7 @@ impl Driver<Init> {
                 .vrefen()
                 .set_bit()
         });
-        let current_sensor = current_sensing::new(
+        let mut current_sensor = current_sensing::new(
             self.mode_state.adc1,
             self.mode_state.adc2,
             self.mode_state.adc3,
@@ -567,7 +567,8 @@ impl Driver<Init> {
         .configure_phase_sensing()
         .configure_v_refint()
         .configure_v_bus(V_BUS_GAIN)
-        .calibrate(20000);
+        .ready();
+        current_sensor.calibrate(20000);
 
         // Configure FDCAN
         let fdcan = fdcan::take(self.mode_state.fdcan)
