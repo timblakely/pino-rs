@@ -331,7 +331,7 @@ pub struct FdcanMessage {
 }
 
 impl FdcanMessage {
-    pub fn new<const T: usize>(id: u32, data: [u32; T]) -> FdcanMessage {
+    pub fn new<const T: usize>(id: u32, data: &[u32; T]) -> FdcanMessage {
         // There's no real idiomatic way to zero-initialize-and-fill-in-up-to-length in Rust as of
         // Aug '21.
         let mut message = FdcanMessage {

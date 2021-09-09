@@ -3,8 +3,8 @@
 #![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::messages::{ExtendedFdcanFrame, Messages},
-    commutation::{Commutator, IdleCurrentSensor},
+    comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Messages},
+    commutation::{Commutator, IdleCurrentDistribution, IdleCurrentSensor},
     driver,
 };
 
@@ -28,6 +28,17 @@ fn main() -> ! {
                 Commutator::set(IdleCurrentSensor::new(m.duration, |measurement| {
                     fdcan.send_message(measurement.pack());
                 }));
+            }
+            Some(Messages::IdleCurrentDistribution(m)) => {
+                Commutator::set(IdleCurrentDistribution::new(
+                    m.duration,
+                    m.center_current,
+                    m.current_range,
+                    m.phase,
+                    |bins| {
+                        fdcan.send_message(CurrentDistribution { bins }.pack());
+                    },
+                ));
             }
             _ => (),
         };
