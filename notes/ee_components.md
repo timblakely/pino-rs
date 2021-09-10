@@ -20,3 +20,13 @@ pigtails](http://www.digikey.com/product-search/en/cable-assemblies/coaxial-cabl
 ## STM32H725VGT6/STM32H735VGT6
 
 [Newark](https://www.newark.com/stmicroelectronics/stm32h735vgt6/mcu-32bit-550mhz-lqfp-100-rohs/dp/89AH1358?st=stm32h7) has the 35 coming in November for $15.79@10+.
+
+# FETs
+
+TI's [CSD88599Q5DC](https://www.ti.com/product/CSD88599Q5DC) are two 60V FETs in a single package.
+
+# Passives
+
+## Ceramics
+
+TDK's C3216X7R1H106K160AE has soft termination and not awful derating
