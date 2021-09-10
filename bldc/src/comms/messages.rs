@@ -20,12 +20,18 @@ pub struct CurrentDistribution<'a> {
     pub bins: &'a [u32; 16],
 }
 
+// Calibrate ADC values.
+pub struct CalibrateADC {
+    pub duration: f32,
+}
+
 // Emergency Stop message.
 pub struct EStop {}
 
 pub enum Messages {
     IdleCurrentSense(IdleCurrentSense),
     IdleCurrentDistribution(IdleCurrentDistribution),
+    CalibrateADC(CalibrateADC),
     EStop(EStop),
 }
 
@@ -106,6 +112,19 @@ impl ExtendedFdcanFrame for CurrentMeasurement {
     }
 }
 
+impl ExtendedFdcanFrame for CalibrateADC {
+    fn unpack(message: &FdcanMessage) -> Self {
+        let buffer = message.data;
+        CalibrateADC {
+            duration: f32::from_bits(buffer[0]),
+        }
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        panic!("Pack not supported");
+    }
+}
+
 impl Messages {
     pub fn unpack_fdcan(message: &FdcanMessage) -> Option<Self> {
         match message.id {
@@ -114,6 +133,7 @@ impl Messages {
             0xE => Some(Self::IdleCurrentDistribution(
                 IdleCurrentDistribution::unpack(message),
             )),
+            0xF => Some(Self::CalibrateADC(CalibrateADC::unpack(message))),
             _ => None,
         }
     }

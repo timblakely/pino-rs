@@ -71,105 +71,9 @@ pub fn new(
     }
 }
 
-fn set_conversion_on_trgo2(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &device::ADC3) {
-    adc1.cfgr.modify(|_, w| {
-        w.res()
-            .bits12()
-            .exten()
-            .rising_edge()
-            .extsel()
-            .tim1_trgo2()
-            .align()
-            .right()
-            .cont()
-            .single()
-            .discen()
-            .disabled()
-            .ovrmod()
-            .overwrite()
-    });
-    adc2.cfgr.modify(|_, w| {
-        w.res()
-            .bits12()
-            .exten()
-            .rising_edge()
-            .extsel()
-            .tim1_trgo2()
-            .align()
-            .right()
-            .cont()
-            .single()
-            .discen()
-            .disabled()
-            .ovrmod()
-            .overwrite()
-    });
-    adc3.cfgr.modify(|_, w| {
-        w.res()
-            .bits12()
-            .exten()
-            .rising_edge()
-            .extsel()
-            .tim1_trgo2()
-            .align()
-            .right()
-            .cont()
-            .single()
-            .discen()
-            .disabled()
-            .ovrmod()
-            .overwrite()
-    });
-}
-
-fn set_single_conversion(adc1: &device::ADC1, adc2: &device::ADC2, adc3: &device::ADC3) {
-    adc1.cfgr.modify(|_, w| {
-        w.res()
-            .bits12()
-            .exten()
-            .disabled()
-            .align()
-            .right()
-            .cont()
-            .single()
-            .discen()
-            .disabled()
-            .ovrmod()
-            .overwrite()
-    });
-    adc2.cfgr.modify(|_, w| {
-        w.res()
-            .bits12()
-            .exten()
-            .disabled()
-            .align()
-            .right()
-            .cont()
-            .single()
-            .discen()
-            .disabled()
-            .ovrmod()
-            .overwrite()
-    });
-    adc3.cfgr.modify(|_, w| {
-        w.res()
-            .bits12()
-            .exten()
-            .disabled()
-            .align()
-            .right()
-            .cont()
-            .single()
-            .discen()
-            .disabled()
-            .ovrmod()
-            .overwrite()
-    });
-}
-
 impl CurrentSensor<Configuring> {
     // TODO(blakely): Make this configurable after HAL is ready.
-    pub fn configure_phase_sensing(self) -> Self {
+    pub fn configure_phase_sensing(mut self) -> Self {
         let adc1 = &self.phase_a;
         let adc2 = &self.phase_b;
         let adc3 = &self.phase_c;
@@ -276,9 +180,106 @@ impl CurrentSensor<Configuring> {
         adc1.smpr1.modify(|_, w| w.smp2().cycles2_5());
         adc2.smpr1.modify(|_, w| w.smp1().cycles2_5());
         adc3.smpr1.modify(|_, w| w.smp1().cycles2_5());
-        set_conversion_on_trgo2(adc1, adc2, adc3);
+
+        self.set_conversion_on_trgo2();
 
         self
+    }
+
+    pub fn set_conversion_on_trgo2(&mut self) {
+        self.phase_a.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .rising_edge()
+                .extsel()
+                .tim1_trgo2()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .overwrite()
+        });
+        self.phase_b.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .rising_edge()
+                .extsel()
+                .tim1_trgo2()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .overwrite()
+        });
+        self.phase_c.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .rising_edge()
+                .extsel()
+                .tim1_trgo2()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .overwrite()
+        });
+    }
+
+    pub fn set_single_conversion(&mut self) {
+        self.phase_a.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .disabled()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .overwrite()
+        });
+        self.phase_b.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .disabled()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .overwrite()
+        });
+        self.phase_c.cfgr.modify(|_, w| {
+            w.res()
+                .bits12()
+                .exten()
+                .disabled()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .discen()
+                .disabled()
+                .ovrmod()
+                .overwrite()
+        });
     }
 
     pub fn configure_v_bus(mut self, v_bus_gain: f32) -> Self {
@@ -417,8 +418,12 @@ impl CurrentSensor<Configuring> {
         self.phase_a
             .isr
             .modify(|_, w| w.eosmp().set_bit().eoc().set_bit().ovr().set_bit());
+        // Start up ADCs.
+        self.phase_a.cr.modify(|_, w| w.adstart().set_bit());
+        self.phase_b.cr.modify(|_, w| w.adstart().set_bit());
+        self.phase_c.cr.modify(|_, w| w.adstart().set_bit());
         // Enable interrupt on ADC1 EOS. Only needed for ADC1, since 2 and 3 are sync'd to the same
-        // tim_trgo2.
+        // tim_trgo2 _and_ have the same sampling period.
         self.phase_a.ier.modify(|_, w| w.eosie().enabled());
 
         // Start continuous sampling on v_bus and v_refint
@@ -455,58 +460,6 @@ impl CurrentSensor<Ready> {
         // Note: `clear()` is a bad name, since it doesn't clear the _bit_, but clears the _flag_ by
         // writing a 1.
         self.phase_a.isr.modify(|_, w| w.eos().clear());
-    }
-
-    pub fn calibrate(&mut self, samples_to_average: u32) {
-        // Disable interrupt on ADC1 EOS
-        self.phase_a.ier.modify(|_, w| w.eosie().disabled());
-
-        // Sample zero/resting state currents
-        self.phase_a_offset = 0.;
-        self.phase_b_offset = 0.;
-        self.phase_c_offset = 0.;
-
-        // Switch from whatever state we're in (expected to be tim_trgo2-based sampling) to
-        // continuous conversion for calibration. Only relevant for the phases, since v_bus and
-        // v_refint are set to continuous conversion by default.
-        set_single_conversion(&self.phase_a, &self.phase_b, &self.phase_c);
-        for _ in 1..samples_to_average {
-            self.phase_a.cr.modify(|_, w| w.adstart().set_bit());
-            self.phase_b.cr.modify(|_, w| w.adstart().set_bit());
-            self.phase_c.cr.modify(|_, w| w.adstart().set_bit());
-            block_until!(self.phase_a.isr.read().eoc().is_complete());
-            block_until!(self.phase_b.isr.read().eoc().is_complete());
-            block_until!(self.phase_c.isr.read().eoc().is_complete());
-            let sample = sample_raw(&self);
-            self.phase_a_offset += sample.phase_a;
-            self.phase_b_offset += sample.phase_b;
-            self.phase_c_offset += sample.phase_c;
-            blocking_sleep_us(1);
-        }
-        self.phase_a_offset /= samples_to_average as f32;
-        self.phase_b_offset /= samples_to_average as f32;
-        self.phase_c_offset /= samples_to_average as f32;
-
-        // Stop the ADCs
-        self.phase_a.cr.modify(|_, w| w.adstp().set_bit());
-        self.phase_b.cr.modify(|_, w| w.adstp().set_bit());
-        self.phase_c.cr.modify(|_, w| w.adstp().set_bit());
-
-        // Clear pending signals
-        self.phase_a
-            .isr
-            .modify(|_, w| w.eosmp().set_bit().eoc().set_bit().ovr().set_bit());
-
-        // Go back to trgo2-triggered conversion.
-        set_conversion_on_trgo2(&self.phase_a, &self.phase_b, &self.phase_c);
-
-        self.phase_a.cr.modify(|_, w| w.adstart().set_bit());
-        self.phase_b.cr.modify(|_, w| w.adstart().set_bit());
-        self.phase_c.cr.modify(|_, w| w.adstart().set_bit());
-
-        // Enable interrupt on ADC1 EOS. Only needed for ADC1, since 2 and 3 are sync'd to the same
-        // tim_trgo2.
-        self.phase_a.ier.modify(|_, w| w.eosie().enabled());
     }
 }
 
@@ -564,8 +517,20 @@ impl CurrentMeasurement {
 }
 
 impl CurrentSensor<Ready> {
+    // Sample ADC values and correct for offset.
     pub fn sample(&self) -> CurrentMeasurement {
         sample(self)
+    }
+
+    // Sample raw ADC values (no offset correction).
+    pub fn sample_raw(&self) -> CurrentMeasurement {
+        sample_raw(self)
+    }
+
+    pub fn set_calibration(&mut self, phase_a: f32, phase_b: f32, phase_c: f32) {
+        self.phase_a_offset = phase_a;
+        self.phase_b_offset = phase_b;
+        self.phase_c_offset = phase_c;
     }
 }
 

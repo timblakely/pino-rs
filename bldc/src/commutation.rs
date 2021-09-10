@@ -204,3 +204,51 @@ fn ADC1_2() {
         _ => return,
     }
 }
+
+/////
+
+pub struct CalibrateADC<'a> {
+    total_counts: u32,
+    loop_count: u32,
+    sample: CurrentMeasurement,
+    callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
+}
+
+impl<'a> CalibrateADC<'a> {
+    pub fn new(
+        duration: f32,
+        callback: impl for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send,
+    ) -> CalibrateADC<'a> {
+        CalibrateADC {
+            total_counts: (40_000 as f32 * duration) as u32,
+            loop_count: 0,
+            sample: CurrentMeasurement::new(),
+            callback: Box::new(callback),
+        }
+    }
+}
+
+impl<'a> ControlLoop for CalibrateADC<'a> {
+    fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
+        self.loop_count += 1;
+        let current_sensor = &mut hardware.current_sensor;
+        self.sample += current_sensor.sample_raw();
+
+        match self.loop_count {
+            x if x >= self.total_counts => {
+                self.sample /= self.loop_count;
+                current_sensor.set_calibration(
+                    self.sample.phase_a,
+                    self.sample.phase_b,
+                    self.sample.phase_c,
+                );
+                LoopState::Finished
+            }
+            _ => LoopState::Running,
+        }
+    }
+
+    fn finished(&mut self) {
+        (self.callback)(&self.sample);
+    }
+}

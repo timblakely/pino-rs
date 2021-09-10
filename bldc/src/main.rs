@@ -4,7 +4,7 @@
 
 use bldc::{
     comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Messages},
-    commutation::{Commutator, IdleCurrentDistribution, IdleCurrentSensor},
+    commutation::{CalibrateADC, Commutator, IdleCurrentDistribution, IdleCurrentSensor},
     driver,
 };
 
@@ -26,6 +26,12 @@ fn main() -> ! {
         match Messages::unpack_fdcan(message) {
             Some(Messages::IdleCurrentSense(m)) => {
                 Commutator::set(IdleCurrentSensor::new(m.duration, |measurement| {
+                    fdcan.send_message(measurement.pack());
+                }));
+            }
+            Some(Messages::CalibrateADC(m)) => {
+                Commutator::set(CalibrateADC::new(m.duration, |measurement| {
+
                     fdcan.send_message(measurement.pack());
                 }));
             }
