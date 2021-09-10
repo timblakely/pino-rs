@@ -4,7 +4,10 @@
 
 use bldc::{
     comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Messages},
-    commutation::{CalibrateADC, Commutator, IdleCurrentDistribution, IdleCurrentSensor},
+    commutation::{
+        inductance_measurement::InductanceMeasurement, CalibrateADC, Commutator,
+        IdleCurrentDistribution, IdleCurrentSensor,
+    },
     driver,
 };
 
@@ -20,6 +23,10 @@ fn main() -> ! {
     // Acquire the driver.
     let driver = driver::take_hardware().configure_peripherals();
 
+    // Commutator::set(InductanceMeasurement::new(1.0, 10000, |_w| {
+    //     let _asdf = 0;
+    // }));
+
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
         // We've received a message via the FDCAN.
@@ -31,7 +38,6 @@ fn main() -> ! {
             }
             Some(Messages::CalibrateADC(m)) => {
                 Commutator::set(CalibrateADC::new(m.duration, |measurement| {
-
                     fdcan.send_message(measurement.pack());
                 }));
             }

@@ -556,11 +556,81 @@ impl ops::AddAssign for CurrentMeasurement {
     }
 }
 
+impl<'a, 'b> ops::AddAssign<&'b CurrentMeasurement> for &'a mut CurrentMeasurement {
+    fn add_assign(&mut self, rhs: &'b CurrentMeasurement) {
+        self.phase_a += rhs.phase_a;
+        self.phase_b += rhs.phase_b;
+        self.phase_c += rhs.phase_c;
+        self.v_bus += rhs.v_bus;
+    }
+}
+
+impl ops::Sub for CurrentMeasurement {
+    type Output = CurrentMeasurement;
+
+    fn sub(self, rhs: CurrentMeasurement) -> Self::Output {
+        CurrentMeasurement {
+            phase_a: self.phase_a - rhs.phase_a,
+            phase_b: self.phase_b - rhs.phase_b,
+            phase_c: self.phase_c - rhs.phase_c,
+            v_bus: self.v_bus - rhs.v_bus,
+        }
+    }
+}
+
+impl<'a, 'b> ops::Sub<&'b CurrentMeasurement> for &'a CurrentMeasurement {
+    type Output = CurrentMeasurement;
+
+    fn sub(self, rhs: &'b CurrentMeasurement) -> Self::Output {
+        CurrentMeasurement {
+            phase_a: self.phase_a - rhs.phase_a,
+            phase_b: self.phase_b - rhs.phase_b,
+            phase_c: self.phase_c - rhs.phase_c,
+            v_bus: self.v_bus - rhs.v_bus,
+        }
+    }
+}
+
+impl ops::SubAssign for CurrentMeasurement {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.phase_a -= rhs.phase_a;
+        self.phase_b -= rhs.phase_b;
+        self.phase_c -= rhs.phase_c;
+        self.v_bus -= rhs.v_bus;
+    }
+}
+
 impl ops::DivAssign<u32> for CurrentMeasurement {
     fn div_assign(&mut self, rhs: u32) {
         self.phase_a /= rhs as f32;
         self.phase_b /= rhs as f32;
         self.phase_c /= rhs as f32;
         self.v_bus /= rhs as f32;
+    }
+}
+
+impl ops::Mul<f32> for CurrentMeasurement {
+    type Output = CurrentMeasurement;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        CurrentMeasurement {
+            phase_a: self.phase_a * rhs,
+            phase_b: self.phase_b * rhs,
+            phase_c: self.phase_c * rhs,
+            v_bus: self.v_bus * rhs,
+        }
+    }
+}
+
+impl ops::Mul<f32> for &CurrentMeasurement {
+    type Output = CurrentMeasurement;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        CurrentMeasurement {
+            phase_a: self.phase_a * rhs,
+            phase_b: self.phase_b * rhs,
+            phase_c: self.phase_c * rhs,
+            v_bus: self.v_bus * rhs,
+        }
     }
 }
