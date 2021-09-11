@@ -81,6 +81,8 @@ impl<'a> ControlLoop for InductanceMeasurement<'a> {
         self.switch_count += 1;
         let count_and_remainder: f32 = self.switch_count as f32 + self.remainder;
         if count_and_remainder >= self.loops_per_switch {
+            self.switch_count = 0;
+            self.switches += 1;
             self.remainder = count_and_remainder - self.loops_per_switch;
             self.direction = match self.direction {
                 Direction::Up => {
@@ -132,6 +134,7 @@ impl<'a> ControlLoop for InductanceMeasurement<'a> {
             v_ref / (self.sample.phase_b / dt),
             v_ref / (self.sample.phase_c / dt),
         ];
+        // (self.callback)(inductances, self.switches);
         (self.callback)(inductances);
     }
 }
