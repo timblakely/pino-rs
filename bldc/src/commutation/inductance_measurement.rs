@@ -23,30 +23,40 @@ pub struct InductanceMeasurement<'a> {
     total_counts: u32,
     loop_count: u32,
     direction: Direction,
+
     sample: CurrentMeasurement,
+    v_bus: f32,
     switch_count: u32,
     loops_per_switch: f32,
     remainder: f32,
     last_sample: Option<CurrentMeasurement>,
-    callback: Box<dyn FnMut(f32) + 'a + Send>,
+
+    callback: Box<dyn FnMut([f32; 3]) + 'a + Send>,
+
+    switches: u32,
 }
 
 impl<'a> InductanceMeasurement<'a> {
     pub fn new(
         duration: f32,
         frequency: u32,
-        callback: impl FnMut(f32) + 'a + Send,
+        callback: impl FnMut([f32; 3]) + 'a + Send,
     ) -> InductanceMeasurement<'a> {
         InductanceMeasurement {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             direction: Direction::Up,
+
             sample: CurrentMeasurement::new(),
+            v_bus: 0.,
             loops_per_switch: (40_000 as f32) / frequency as f32,
             switch_count: 0,
             remainder: 0.,
             last_sample: None,
+
             callback: Box::new(callback),
+
+            switches: 0,
         }
     }
 }
@@ -54,6 +64,7 @@ impl<'a> InductanceMeasurement<'a> {
 impl<'a> ControlLoop for InductanceMeasurement<'a> {
     fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
         let current_sensor = &hardware.current_sensor;
+        self.v_bus += current_sensor.v_bus();
         let sample = current_sensor.sample();
 
         let sign: f32 = match self.direction {
@@ -79,6 +90,7 @@ impl<'a> ControlLoop for InductanceMeasurement<'a> {
                         .write(|w| w.ccr1().bits((0.03f32 * 2125.) as u16));
                     hardware.tim1.ccr2.write(|w| w.ccr2().bits(0));
                     hardware.tim1.ccr3.write(|w| w.ccr3().bits(0));
+                    self.switches += 1;
                     Direction::Down
                 }
                 Direction::Down => {
@@ -91,6 +103,7 @@ impl<'a> ControlLoop for InductanceMeasurement<'a> {
                         .tim1
                         .ccr3
                         .write(|w| w.ccr3().bits((0.03f32 * 2125.) as u16));
+                    self.switches += 1;
                     Direction::Up
                 }
             };
@@ -98,13 +111,27 @@ impl<'a> ControlLoop for InductanceMeasurement<'a> {
 
         self.loop_count += 1;
         match self.loop_count {
-            x if x >= self.total_counts => LoopState::Finished,
+            x if x >= self.total_counts => {
+                hardware.tim1.ccr1.write(|w| w.ccr1().bits(0));
+                hardware.tim1.ccr2.write(|w| w.ccr2().bits(0));
+                hardware.tim1.ccr3.write(|w| w.ccr3().bits(0));
+                LoopState::Finished
+            }
             _ => LoopState::Running,
         }
     }
 
     fn finished(&mut self) {
-        let inductance = self.sample.v_bus * 0.03 / self.loop_count as f32;
-        (self.callback)(inductance);
+        let loop_count = self.loop_count as f32;
+        let v_bus = self.v_bus / loop_count;
+        let v_ref = v_bus * 0.03;
+        let dt = loop_count / 40000f32;
+
+        let inductances = [
+            v_ref / (self.sample.phase_a / dt),
+            v_ref / (self.sample.phase_b / dt),
+            v_ref / (self.sample.phase_c / dt),
+        ];
+        (self.callback)(inductances);
     }
 }

@@ -20,6 +20,16 @@ pub struct CurrentDistribution<'a> {
     pub bins: &'a [u32; 16],
 }
 
+// Measure the inductance of the windings
+pub struct MeasureInductance {
+    pub duration: f32,
+    pub frequency: u32,
+}
+// Return value for inductances
+pub struct Inductances<'a> {
+    pub inductances: &'a [f32; 3],
+}
+
 // Calibrate ADC values.
 pub struct CalibrateADC {
     pub duration: f32,
@@ -32,6 +42,7 @@ pub enum Messages {
     IdleCurrentSense(IdleCurrentSense),
     IdleCurrentDistribution(IdleCurrentDistribution),
     CalibrateADC(CalibrateADC),
+    MeasureInductance(MeasureInductance),
     EStop(EStop),
 }
 
@@ -85,6 +96,37 @@ impl<'a> ExtendedFdcanFrame for CurrentDistribution<'a> {
     }
 }
 
+impl ExtendedFdcanFrame for MeasureInductance {
+    fn unpack(message: &FdcanMessage) -> Self {
+        let buffer = message.data;
+        MeasureInductance {
+            duration: f32::from_bits(buffer[0]),
+            frequency: buffer[1],
+        }
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        panic!("Pack not supported");
+    }
+}
+
+impl<'a> ExtendedFdcanFrame for Inductances<'a> {
+    fn unpack(_: &FdcanMessage) -> Self {
+        panic!("Unack not supported");
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        FdcanMessage::new(
+            0x11,
+            &[
+                self.inductances[0].to_bits(),
+                self.inductances[1].to_bits(),
+                self.inductances[2].to_bits(),
+            ],
+        )
+    }
+}
+
 impl ExtendedFdcanFrame for EStop {
     fn unpack(_: &FdcanMessage) -> Self {
         EStop {}
@@ -134,6 +176,7 @@ impl Messages {
                 IdleCurrentDistribution::unpack(message),
             )),
             0xF => Some(Self::CalibrateADC(CalibrateADC::unpack(message))),
+            0x10 => Some(Self::MeasureInductance(MeasureInductance::unpack(message))),
             _ => None,
         }
     }

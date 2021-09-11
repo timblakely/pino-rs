@@ -382,6 +382,9 @@ impl CurrentSensor<Configuring> {
         // Wait for it to complete
         block_until!(adc5.cr.read().adcal().bit_is_clear());
 
+        // Apparently ADC5 is kinda sleepy and takes a bit to exit calibration mode?
+        blocking_sleep_us(1);
+
         // Check that we're ready, enable, and wait for ready state. Initial adrdy.set_bit is to
         // ensure it's cleared.
         adc5.isr.modify(|_, w| w.adrdy().set_bit());
@@ -487,14 +490,11 @@ fn sample_raw<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasur
     let phase_a = calc_phase_current(phase_a);
     let phase_b = calc_phase_current(phase_b);
     let phase_c = calc_phase_current(phase_c);
-    let v_bus =
-        (sensor.from_v_refint)(v_refint, sensor.v_bus.dr.read().bits() as u16) * sensor.v_bus_gain;
 
     CurrentMeasurement {
         phase_a,
         phase_b,
         phase_c,
-        v_bus,
     }
 }
 
@@ -502,7 +502,6 @@ pub struct CurrentMeasurement {
     pub phase_a: f32,
     pub phase_b: f32,
     pub phase_c: f32,
-    pub v_bus: f32,
 }
 
 impl CurrentMeasurement {
@@ -511,7 +510,6 @@ impl CurrentMeasurement {
             phase_a: 0.,
             phase_b: 0.,
             phase_c: 0.,
-            v_bus: 0.,
         }
     }
 }
@@ -532,6 +530,11 @@ impl CurrentSensor<Ready> {
         self.phase_b_offset = phase_b;
         self.phase_c_offset = phase_c;
     }
+
+    pub fn v_bus(&self) -> f32 {
+        let v_refint = self.v_refint.dr.read().bits() as u16;
+        (self.from_v_refint)(v_refint, self.v_bus.dr.read().bits() as u16) * self.v_bus_gain
+    }
 }
 
 impl ops::Add for CurrentMeasurement {
@@ -542,7 +545,6 @@ impl ops::Add for CurrentMeasurement {
             phase_a: self.phase_a + rhs.phase_a,
             phase_b: self.phase_b + rhs.phase_b,
             phase_c: self.phase_c + rhs.phase_c,
-            v_bus: self.v_bus + rhs.v_bus,
         }
     }
 }
@@ -552,7 +554,6 @@ impl ops::AddAssign for CurrentMeasurement {
         self.phase_a += rhs.phase_a;
         self.phase_b += rhs.phase_b;
         self.phase_c += rhs.phase_c;
-        self.v_bus += rhs.v_bus;
     }
 }
 
@@ -561,7 +562,6 @@ impl<'a, 'b> ops::AddAssign<&'b CurrentMeasurement> for &'a mut CurrentMeasureme
         self.phase_a += rhs.phase_a;
         self.phase_b += rhs.phase_b;
         self.phase_c += rhs.phase_c;
-        self.v_bus += rhs.v_bus;
     }
 }
 
@@ -573,7 +573,6 @@ impl ops::Sub for CurrentMeasurement {
             phase_a: self.phase_a - rhs.phase_a,
             phase_b: self.phase_b - rhs.phase_b,
             phase_c: self.phase_c - rhs.phase_c,
-            v_bus: self.v_bus - rhs.v_bus,
         }
     }
 }
@@ -586,7 +585,6 @@ impl<'a, 'b> ops::Sub<&'b CurrentMeasurement> for &'a CurrentMeasurement {
             phase_a: self.phase_a - rhs.phase_a,
             phase_b: self.phase_b - rhs.phase_b,
             phase_c: self.phase_c - rhs.phase_c,
-            v_bus: self.v_bus - rhs.v_bus,
         }
     }
 }
@@ -596,7 +594,6 @@ impl ops::SubAssign for CurrentMeasurement {
         self.phase_a -= rhs.phase_a;
         self.phase_b -= rhs.phase_b;
         self.phase_c -= rhs.phase_c;
-        self.v_bus -= rhs.v_bus;
     }
 }
 
@@ -605,7 +602,6 @@ impl ops::DivAssign<u32> for CurrentMeasurement {
         self.phase_a /= rhs as f32;
         self.phase_b /= rhs as f32;
         self.phase_c /= rhs as f32;
-        self.v_bus /= rhs as f32;
     }
 }
 
@@ -617,7 +613,6 @@ impl ops::Mul<f32> for CurrentMeasurement {
             phase_a: self.phase_a * rhs,
             phase_b: self.phase_b * rhs,
             phase_c: self.phase_c * rhs,
-            v_bus: self.v_bus * rhs,
         }
     }
 }
@@ -630,7 +625,6 @@ impl ops::Mul<f32> for &CurrentMeasurement {
             phase_a: self.phase_a * rhs,
             phase_b: self.phase_b * rhs,
             phase_c: self.phase_c * rhs,
-            v_bus: self.v_bus * rhs,
         }
     }
 }

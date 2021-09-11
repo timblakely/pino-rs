@@ -3,7 +3,7 @@
 #![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Messages},
+    comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Inductances, Messages},
     commutation::{
         inductance_measurement::InductanceMeasurement, CalibrateADC, Commutator,
         IdleCurrentDistribution, IdleCurrentSensor,
@@ -21,11 +21,7 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 #[cortex_m_rt::entry]
 fn main() -> ! {
     // Acquire the driver.
-    let driver = driver::take_hardware().configure_peripherals();
-
-    // Commutator::set(InductanceMeasurement::new(1.0, 10000, |_w| {
-    //     let _asdf = 0;
-    // }));
+    let driver = driver::take_hardware().configure_peripherals().calibrate();
 
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
@@ -49,6 +45,20 @@ fn main() -> ! {
                     m.phase,
                     |bins| {
                         fdcan.send_message(CurrentDistribution { bins }.pack());
+                    },
+                ));
+            }
+            Some(Messages::MeasureInductance(m)) => {
+                Commutator::set(InductanceMeasurement::new(
+                    m.duration,
+                    m.frequency,
+                    |inductances| {
+                        fdcan.send_message(
+                            Inductances {
+                                inductances: &inductances,
+                            }
+                            .pack(),
+                        );
                     },
                 ));
             }

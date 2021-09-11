@@ -1,7 +1,7 @@
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
-use super::{LoopState, CONTROL_LOOP};
+use super::{Commutator, LoopState, CONTROL_LOOP};
 
 // Interrupt handler triggered by TIM1[CH4]'s tim_trgo2. Under normal circumstances this function
 // will be called continuously, regardless of the control loop in place. Note that the control loop
@@ -46,5 +46,36 @@ fn ADC1_2() {
             loop_vars.control_loop = None;
         }
         _ => return,
+    }
+}
+
+impl Commutator {
+    pub fn enable_loop() {
+        {
+            let mut control_vars = CONTROL_LOOP.lock();
+            let hw = &control_vars
+                .as_mut()
+                .expect("Control loop vars not ready")
+                .hw;
+            // Kick off the timer.
+            hw.tim1.cr1.modify(|_, w| w.cen().set_bit());
+            // Now that the timer has started, enable the main output to allow current on the pins. If
+            // we do this before we enable the timer, we have the potential to get into a state where the
+            // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+            // current through any high phases to any low phases.
+            hw.tim1.bdtr.modify(|_, w| w.moe().set_bit());
+        };
+    }
+
+    pub fn disable_loop() {
+        {
+            let mut control_vars = CONTROL_LOOP.lock();
+            let hw = &control_vars
+                .as_mut()
+                .expect("Control loop vars not ready")
+                .hw;
+            hw.tim1.bdtr.modify(|_, w| w.moe().clear_bit());
+            hw.tim1.cr1.modify(|_, w| w.cen().clear_bit());
+        };
     }
 }

@@ -1,5 +1,9 @@
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use crate::comms::fdcan::{Fdcan, FdcanMessage, Running, FDCAN_INTERRUPTS};
-use crate::commutation::{ControlHardware, ControlLoopVars, CONTROL_LOOP};
+use crate::commutation::{
+    CalibrateADC, Commutator, ControlHardware, ControlLoopVars, CONTROL_LOOP,
+};
 use crate::current_sensing;
 use crate::memory::initialize_heap;
 use crate::util::stm32::{
@@ -42,6 +46,11 @@ pub struct Init {
     pub adc4: device::ADC4,
     pub adc5: device::ADC5,
     pub cordic: device::CORDIC,
+}
+
+pub struct Calibrating {
+    pub drv: Drv8323rs<drv8323rs::Ready>,
+    pub gpioa: device::GPIOA,
 }
 
 pub struct Ready {
@@ -530,7 +539,7 @@ impl Driver<Init> {
         });
     }
 
-    pub fn configure_peripherals<'a>(self) -> Driver<Ready> {
+    pub fn configure_peripherals<'a>(self) -> Driver<Calibrating> {
         self.configure_gpio();
         self.configure_timers();
 
@@ -639,33 +648,39 @@ impl Driver<Init> {
             },
         });
 
-        let new_self = Driver {
-            mode_state: Ready {
+        Driver {
+            mode_state: Calibrating {
                 drv,
                 gpioa: self.mode_state.gpioa,
             },
-        };
-        new_self
+        }
+    }
+}
+
+impl Driver<Calibrating> {
+    pub fn calibrate(self) -> Driver<Ready> {
+        let block = AtomicBool::new(true);
+
+        Commutator::enable_loop();
+        Commutator::set(CalibrateADC::new(0.5, |_| {
+            block.store(false, Ordering::Release);
+        }));
+        while block.load(Ordering::Acquire) {}
+        Commutator::disable_loop();
+
+        Driver {
+            mode_state: Ready {
+                drv: self.mode_state.drv,
+                gpioa: self.mode_state.gpioa,
+            },
+        }
     }
 }
 
 // TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl Driver<Ready> {
     pub fn listen(self, mut comms_handler: impl FnMut(&mut Fdcan<Running>, &FdcanMessage)) {
-        {
-            let mut control_vars = CONTROL_LOOP.lock();
-            let hw = &control_vars
-                .as_mut()
-                .expect("Control loop vars not ready")
-                .hw;
-            // Kick off the timer.
-            hw.tim1.cr1.modify(|_, w| w.cen().set_bit());
-            // Now that the timer has started, enable the main output to allow current on the pins. If
-            // we do this before we enable the timer, we have the potential to get into a state where the
-            // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-            // current through any high phases to any low phases.
-            hw.tim1.bdtr.modify(|_, w| w.moe().set_bit());
-        };
+        Commutator::enable_loop();
 
         loop {
             // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 (Rx) from
