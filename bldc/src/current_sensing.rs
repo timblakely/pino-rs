@@ -71,6 +71,26 @@ pub fn new(
     }
 }
 
+impl<T: CurrentSensorState> CurrentSensor<T> {
+    pub fn sampling_period_fast(&mut self) {
+        self.phase_a.smpr1.modify(|_, w| w.smp2().cycles2_5());
+        self.phase_b.smpr1.modify(|_, w| w.smp1().cycles2_5());
+        self.phase_c.smpr1.modify(|_, w| w.smp1().cycles2_5());
+    }
+
+    pub fn sampling_period_normal(&mut self) {
+        self.phase_a.smpr1.modify(|_, w| w.smp2().cycles12_5());
+        self.phase_b.smpr1.modify(|_, w| w.smp1().cycles12_5());
+        self.phase_c.smpr1.modify(|_, w| w.smp1().cycles12_5());
+    }
+
+    pub fn sampling_period_long(&mut self) {
+        self.phase_a.smpr1.modify(|_, w| w.smp2().cycles47_5());
+        self.phase_b.smpr1.modify(|_, w| w.smp1().cycles47_5());
+        self.phase_c.smpr1.modify(|_, w| w.smp1().cycles47_5());
+    }
+}
+
 impl CurrentSensor<Configuring> {
     // TODO(blakely): Make this configurable after HAL is ready.
     pub fn configure_phase_sensing(mut self) -> Self {
@@ -177,9 +197,7 @@ impl CurrentSensor<Configuring> {
             .modify(|_, w| unsafe { w.l().bits(0).sq1().bits(1) });
         // Fastest sample time we can, since there should be little-to-no resistance coming in from
         // the DRV current sense amplifier.
-        adc1.smpr1.modify(|_, w| w.smp2().cycles2_5());
-        adc2.smpr1.modify(|_, w| w.smp1().cycles2_5());
-        adc3.smpr1.modify(|_, w| w.smp1().cycles2_5());
+        self.sampling_period_fast();
 
         self.set_conversion_on_trgo2();
 

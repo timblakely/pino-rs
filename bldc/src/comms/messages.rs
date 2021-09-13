@@ -24,6 +24,8 @@ pub struct CurrentDistribution<'a> {
 pub struct MeasureInductance {
     pub duration: f32,
     pub frequency: u32,
+    pub pwm_duty: f32,
+    pub sample_pwm_percent: f32,
 }
 // Return value for inductances
 pub struct Inductances<'a> {
@@ -102,6 +104,8 @@ impl ExtendedFdcanFrame for MeasureInductance {
         MeasureInductance {
             duration: f32::from_bits(buffer[0]),
             frequency: buffer[1],
+            pwm_duty: f32::from_bits(buffer[2]),
+            sample_pwm_percent: f32::from_bits(buffer[3]),
         }
     }
 

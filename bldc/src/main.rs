@@ -52,6 +52,8 @@ fn main() -> ! {
                 Commutator::set(InductanceMeasurement::new(
                     m.duration,
                     m.frequency,
+                    m.pwm_duty,
+                    m.sample_pwm_percent,
                     |inductances| {
                         fdcan.send_message(
                             Inductances {
