@@ -43,8 +43,9 @@ pub fn new(
 ) -> CurrentSensor<Configuring> {
     let from_v_refint = |v_refint_reading: u16, adc_reading: u16| {
         const V_REFINT_CAL: f32 = 3.0;
-        // Safety: According to STM32G474 datassheet, internal voltage reference calibration value
-        // is a u16 located at 0x1FFF_75AA. Calibration was performed at 3.0V
+        // Safety: Reading arbitrary memory locations isn't really safe, but according to STM32G474
+        // datasheet the internal voltage reference calibration value is a u16 located at
+        // 0x1FFF_75AA. Calibration was performed at 3.0V
         let v_refint_cal_value = unsafe { *((0x1FFF_75AA) as *const u16) };
         // TODO(blakely): assumes 12-bit precision
         (V_REFINT_CAL as f32 * v_refint_cal_value as f32 * adc_reading as f32)
