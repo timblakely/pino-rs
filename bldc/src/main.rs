@@ -5,7 +5,7 @@
 use bldc::{
     comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Inductances, Messages},
     commutation::{
-        inductance_measurement::InductanceMeasurement, CalibrateADC, Commutator,
+        measure_inductance::MeasureInductance, CalibrateADC, Commutator,
         IdleCurrentDistribution, IdleCurrentSensor,
     },
     driver,
@@ -49,7 +49,7 @@ fn main() -> ! {
                 ));
             }
             Some(Messages::MeasureInductance(m)) => {
-                Commutator::set(InductanceMeasurement::new(
+                Commutator::set(MeasureInductance::new(
                     m.duration,
                     m.frequency,
                     m.pwm_duty,

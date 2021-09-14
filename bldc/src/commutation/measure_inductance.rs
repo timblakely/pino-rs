@@ -22,7 +22,7 @@ enum Direction {
     Down,
 }
 
-pub struct InductanceMeasurement<'a> {
+pub struct MeasureInductance<'a> {
     total_counts: u32,
     loop_count: u32,
     direction: Direction,
@@ -41,14 +41,14 @@ pub struct InductanceMeasurement<'a> {
     switches: u32,
 }
 
-impl<'a> InductanceMeasurement<'a> {
+impl<'a> MeasureInductance<'a> {
     pub fn new(
         duration: f32,
         square_wave_freq: u32,
         pwm_duty: f32,
         sample_pwm_percent: f32,
         callback: impl FnMut([f32; 3]) + 'a + Send,
-    ) -> InductanceMeasurement<'a> {
+    ) -> MeasureInductance<'a> {
         let square_wave_freq = square_wave_freq.min(20_000).max(MIN_SQUARE_WAVE_FREQ);
         let pwm_duty = pwm_duty.max(0.).min(MAX_PWM_DUTY_CYCLE);
         if pwm_duty > MAX_PWM_DUTY_CYCLE {
@@ -56,7 +56,7 @@ impl<'a> InductanceMeasurement<'a> {
             panic!("Max PWM duty cycle too high for inductance calibration")
         }
         let pwm_ccr = (pwm_duty * 2125f32) as u16;
-        InductanceMeasurement {
+        MeasureInductance {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             direction: Direction::Up,
@@ -77,7 +77,7 @@ impl<'a> InductanceMeasurement<'a> {
     }
 }
 
-impl<'a> ControlLoop for InductanceMeasurement<'a> {
+impl<'a> ControlLoop for MeasureInductance<'a> {
     fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
         let current_sensor = &mut hardware.current_sensor;
         current_sensor.sampling_period_long();

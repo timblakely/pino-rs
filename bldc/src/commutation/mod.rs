@@ -9,8 +9,8 @@ use alloc::boxed::Box;
 
 pub mod idle_current_distribution;
 pub mod idle_current_sensor;
-pub mod inductance_measurement;
 pub mod interrupt;
+pub mod measure_inductance;
 
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;
