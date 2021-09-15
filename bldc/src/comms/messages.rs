@@ -2,6 +2,8 @@ use crate::current_sensing::CurrentMeasurement;
 
 use super::fdcan::FdcanMessage;
 
+// TODO(blakely): Move these into their respective control loop files. No need to be in messages.rs
+
 // Current sense for a given duration.
 pub struct IdleCurrentSense {
     pub duration: f32,
@@ -32,6 +34,13 @@ pub struct Inductances<'a> {
     pub inductances: &'a [f32; 3],
 }
 
+// Measure the resistance of the windings.
+pub struct MeasureResistance {
+    pub duration: f32,
+    pub target_voltage: f32,
+    pub phase: crate::commutation::measure_resistance::Phase,
+}
+
 // Calibrate ADC values.
 pub struct CalibrateADC {
     pub duration: f32,
@@ -45,6 +54,7 @@ pub enum Messages {
     IdleCurrentDistribution(IdleCurrentDistribution),
     CalibrateADC(CalibrateADC),
     MeasureInductance(MeasureInductance),
+    MeasureResistance(MeasureResistance),
     EStop(EStop),
 }
 
@@ -131,6 +141,26 @@ impl<'a> ExtendedFdcanFrame for Inductances<'a> {
     }
 }
 
+impl ExtendedFdcanFrame for MeasureResistance {
+    fn unpack(message: &FdcanMessage) -> Self {
+        let buffer = message.data;
+        MeasureResistance {
+            duration: f32::from_bits(buffer[0]),
+            target_voltage: f32::from_bits(buffer[1]),
+
+            phase: match buffer[2] & 0xFFu32 {
+                0 => crate::commutation::measure_resistance::Phase::A,
+                1 => crate::commutation::measure_resistance::Phase::B,
+                _ => crate::commutation::measure_resistance::Phase::C,
+            },
+        }
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        panic!("Pack not supported");
+    }
+}
+
 impl ExtendedFdcanFrame for EStop {
     fn unpack(_: &FdcanMessage) -> Self {
         EStop {}
@@ -181,6 +211,7 @@ impl Messages {
             )),
             0xF => Some(Self::CalibrateADC(CalibrateADC::unpack(message))),
             0x10 => Some(Self::MeasureInductance(MeasureInductance::unpack(message))),
+            0x11 => Some(Self::MeasureResistance(MeasureResistance::unpack(message))),
             _ => None,
         }
     }

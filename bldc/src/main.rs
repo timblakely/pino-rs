@@ -5,8 +5,8 @@
 use bldc::{
     comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Inductances, Messages},
     commutation::{
-        measure_inductance::MeasureInductance, CalibrateADC, Commutator,
-        IdleCurrentDistribution, IdleCurrentSensor,
+        measure_inductance::MeasureInductance, measure_resistance::MeasureResistance, CalibrateADC,
+        Commutator, IdleCurrentDistribution, IdleCurrentSensor,
     },
     driver,
 };
@@ -61,6 +61,16 @@ fn main() -> ! {
                             }
                             .pack(),
                         );
+                    },
+                ));
+            }
+            Some(Messages::MeasureResistance(m)) => {
+                Commutator::set(MeasureResistance::new(
+                    m.duration,
+                    m.target_voltage,
+                    m.phase,
+                    |measurement| {
+                        fdcan.send_message(measurement.pack());
                     },
                 ));
             }

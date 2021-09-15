@@ -11,6 +11,7 @@ pub mod idle_current_distribution;
 pub mod idle_current_sensor;
 pub mod interrupt;
 pub mod measure_inductance;
+pub mod measure_resistance;
 
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;
