@@ -33,6 +33,7 @@ pub struct MeasureInductance<'a> {
     loops_per_switch: f32,
     remainder: f32,
     last_sample: Option<CurrentMeasurement>,
+    pwm_duty: f32,
     pwm_ccr: u16,
     sample_pwm_ccr: u16,
 
@@ -67,6 +68,7 @@ impl<'a> MeasureInductance<'a> {
             switch_count: 0,
             remainder: 0.,
             last_sample: None,
+            pwm_duty,
             pwm_ccr,
             sample_pwm_ccr: (((2125 - pwm_ccr) as f32 * sample_pwm_percent) as u16 + 1).max(2124),
 
@@ -150,7 +152,7 @@ impl<'a> ControlLoop for MeasureInductance<'a> {
     fn finished(&mut self) {
         let loop_count = self.loop_count as f32;
         let v_bus = self.v_bus / loop_count;
-        let v_ref = v_bus * 0.03;
+        let v_ref = v_bus * self.pwm_duty;
         let dt = loop_count / 40_000f32;
 
         let inductances = [
