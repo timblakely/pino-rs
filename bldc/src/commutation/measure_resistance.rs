@@ -1,7 +1,10 @@
 extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::current_sensing::CurrentMeasurement;
+use crate::{
+    comms::{fdcan::FdcanMessage, messages::ExtendedFdcanFrame},
+    current_sensing::CurrentMeasurement,
+};
 use alloc::boxed::Box;
 
 // Switch a single phase via PWM and measure the steady-state current for a period of time to
@@ -26,9 +29,11 @@ pub struct MeasureResistance<'a> {
     target_voltage: f32,
 
     phase: Phase,
+    pwm_duty: f32,
+    v_bus: f32,
     current: CurrentMeasurement,
 
-    callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
+    callback: Box<dyn for<'r> FnMut(&'r Resistance) + 'a + Send>,
 }
 
 impl<'a> MeasureResistance<'a> {
@@ -36,16 +41,32 @@ impl<'a> MeasureResistance<'a> {
         duration: f32,
         target_voltage: f32,
         phase: Phase,
-        callback: impl for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send,
+        callback: impl for<'r> FnMut(&'r Resistance) + 'a + Send,
     ) -> MeasureResistance<'a> {
         MeasureResistance {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             target_voltage,
             phase,
+            pwm_duty: 0.,
+            v_bus: 0.,
             current: CurrentMeasurement::new(),
             callback: Box::new(callback),
         }
+    }
+}
+
+pub struct Resistance {
+    resistance: f32,
+}
+
+impl ExtendedFdcanFrame for Resistance {
+    fn unpack(_: &crate::comms::fdcan::FdcanMessage) -> Self {
+        panic!("Unpack not supported")
+    }
+
+    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
+        FdcanMessage::new(0x12, &[self.resistance.to_bits()])
     }
 }
 
@@ -57,9 +78,13 @@ impl<'a> ControlLoop for MeasureResistance<'a> {
         let tim1 = &hardware.tim1;
 
         self.current += current_sensor.sample();
+        let v_bus = current_sensor.v_bus();
+        self.v_bus += v_bus;
 
-        let duty = (self.target_voltage / current_sensor.v_bus() as f32).min(MAX_PWM_DUTY_CYCLE);
+        let duty = (self.target_voltage / v_bus).min(MAX_PWM_DUTY_CYCLE);
         let ccr = (2125. * duty) as u16;
+
+        self.pwm_duty += duty;
 
         match self.phase {
             Phase::A => {
@@ -92,7 +117,15 @@ impl<'a> ControlLoop for MeasureResistance<'a> {
     }
 
     fn finished(&mut self) {
+        self.pwm_duty /= self.loop_count as f32;
+        self.v_bus /= self.loop_count as f32;
         self.current /= self.loop_count;
-        (self.callback)(&self.current);
+        let resistance = (self.v_bus * self.pwm_duty)
+            / match self.phase {
+                Phase::A => self.current.phase_a,
+                Phase::B => self.current.phase_b,
+                Phase::C => self.current.phase_c,
+            };
+        (self.callback)(&Resistance { resistance });
     }
 }
