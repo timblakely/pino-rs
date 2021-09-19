@@ -1,4 +1,4 @@
-use crate::current_sensing::CurrentMeasurement;
+use crate::{commutation::phase_current::PhaseCurrentCommand, current_sensing::CurrentMeasurement};
 
 use super::fdcan::FdcanMessage;
 
@@ -56,6 +56,7 @@ pub enum Messages {
     MeasureInductance(MeasureInductance),
     MeasureResistance(MeasureResistance),
     EStop(EStop),
+    PhaseCurrentCommand(PhaseCurrentCommand),
 }
 
 // TODO(blakely): split into received/sent, since some of the messages only make sense for incoming
@@ -212,6 +213,9 @@ impl Messages {
             0xF => Some(Self::CalibrateADC(CalibrateADC::unpack(message))),
             0x10 => Some(Self::MeasureInductance(MeasureInductance::unpack(message))),
             0x11 => Some(Self::MeasureResistance(MeasureResistance::unpack(message))),
+            0x12 => Some(Self::PhaseCurrentCommand(PhaseCurrentCommand::unpack(
+                message,
+            ))),
             _ => None,
         }
     }
