@@ -8,3 +8,4 @@ Rev 1.1 changes required:
 - [ ] Motor connector using [DF22R-3P-8.92DS](https://www.digikey.com/en/products/detail/hirose-electric-co-ltd/DF22R-3P-7-92DS-05/1025058)
 - [ ] Remove under-FET through-holes
 - [ ] Add place to clip when measuring w/oscilloscope
+- [ ] Vias for sensing all three phases, not just Phase A
