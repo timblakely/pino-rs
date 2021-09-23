@@ -545,7 +545,7 @@ impl Driver<Init> {
 
         let ma702 = ma702::new(self.mode_state.spi1)
             .configure_spi()
-            .begin_stream(&self.mode_state.dma1, &self.mode_state.dmamux);
+            .begin_stream(self.mode_state.dma1, &self.mode_state.dmamux);
 
         let gpioc = &self.mode_state.gpioc;
         let drv = drv8323rs::new(self.mode_state.spi3)

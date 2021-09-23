@@ -3,6 +3,8 @@
 use crate::block_until;
 use crate::block_while;
 use stm32g4::stm32g474 as device;
+use third_party::m4vga_rs::util::armv7m::enable_irq;
+use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 // Static location in memory to stream the raw angle measurements to. This has to be a) in a
 // consistent location and b) In RAM, not flash.
@@ -130,7 +132,7 @@ impl Ma702<Ready> {
         // Disable DMA channel if it's enabled.
         dma.ccr2.modify(|_, w| w.en().clear_bit());
         block_until!(dma.ccr2.read().en().bit_is_clear());
-        // Configure for memory-to-peripheral mode @ 16-bit. Don't change address for either memory
+        // Configure for peripheral-to-memory mode @ 16-bit. Don't change address for either memory
         // or peripheral.
         dma.ccr2.modify(|_, w| unsafe {
             // Safety: Upstream: This should be a 2-bit enum. 0b01 = 16-bit
@@ -154,17 +156,18 @@ impl Ma702<Ready> {
         dma.cndtr2.write(|w| unsafe { w.ndt().bits(1) });
         // Target memory location
         {
-            // Safety: This is the source of the DMA stream. We've configured it for 16-bit
-            // and the address we're taking is a `u16`
+            // Safety: This is the destination of the DMA stream. We've configured it for 16-bit
+            // and the address we're taking is a `u16`. We're also taking a reference to a `static
+            // mut` which is normally bad, but DMA writes _should_ be atomic.
             dma.cmar2
                 .write(|w| unsafe { w.ma().bits(((&ANGLE) as *const _) as u32) });
         }
         // Target peripheral location
         {
             let spi = &self.spi;
-            // Safety: Erm... its not? XD We're asking the DMA to stream data to an arbitrary
-            // address, which is in no way shape or form safe. We've set it up so that it's a `u16`
-            // transfer from the static above to `SPI[DR]`. YOLO
+            // Safety: We're reading from an arbitrary location in memory: the data register of the
+            // SPI peripheral. It's configured to read 16 bits, the width of the packet we're
+            // requesting from the SPI peripheral.
             dma.cpar2
                 .write(|w| unsafe { w.pa().bits(((&spi.dr) as *const _) as u32) });
         }
@@ -177,9 +180,9 @@ impl Ma702<Ready> {
         dmamux.c1cr.modify(|_, w| unsafe { w.dmareq_id().bits(65) });
     }
 
-    pub fn begin_stream(self, dma: &device::DMA1, dmamux: &device::DMAMUX) -> Ma702<Streaming> {
-        self.configure_tx_stream(dma, dmamux);
-        self.configure_rx_stream(dma, dmamux);
+    pub fn begin_stream(self, dma: device::DMA1, dmamux: &device::DMAMUX) -> Ma702<Streaming> {
+        self.configure_tx_stream(&dma, dmamux);
+        self.configure_rx_stream(&dma, dmamux);
 
         // Enable SPI.
         self.spi.cr1.modify(|_, w| w.spe().set_bit());
@@ -189,9 +192,18 @@ impl Ma702<Ready> {
         dma.ccr1.modify(|_, w| w.en().set_bit());
         block_until! {  dma.ccr1.read().en().bit_is_set() }
 
-        // Enable DMA stream 1.
+        // Enable the DMA1[CH2] interrupt in NVIC.
+        enable_irq(device::Interrupt::DMA1_CH2);
+        // Enable the DMA1[CH2] Transfer Complete interrupt so that the handler is called when the
+        // transfer from SPI to memory is complete.
+        dma.ccr2.modify(|_, w| w.tcie().set_bit());
+
+        // Enable DMA stream 2.
         dma.ccr2.modify(|_, w| w.en().set_bit());
         block_until! {  dma.ccr2.read().en().bit_is_set() }
+
+        // Donate the DMA so that the interrupt handler can clear the interrupt flag.
+        *DMA1.lock() = Some(dma);
 
         Ma702 {
             spi: self.spi,
@@ -199,6 +211,8 @@ impl Ma702<Ready> {
         }
     }
 }
+
+pub static DMA1: SpinLock<Option<device::DMA1>> = SpinLock::new(None);
 
 impl Ma702<Streaming> {
     pub fn angle(&self) -> u16 {
