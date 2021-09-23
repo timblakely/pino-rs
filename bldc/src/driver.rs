@@ -122,6 +122,8 @@ fn init(
     disable_dead_battery_pd(&pwr);
 
     // Make sure we don't receive any interrupts before we're ready.
+    disable_irq(device::Interrupt::ADC1_2);
+    disable_irq(device::Interrupt::DMA1_CH2);
     disable_irq(device::Interrupt::FDCAN1_INTR0_IT);
     disable_irq(device::Interrupt::FDCAN1_INTR1_IT);
 
@@ -177,8 +179,11 @@ fn init(
     unsafe {
         // Ensure that the control loop is at the absolute highest priority.
         nvic.set_priority(device::Interrupt::ADC1_2, 0x0);
-        nvic.set_priority(device::Interrupt::FDCAN1_INTR0_IT, 0x10);
-        nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0x10);
+        // Next is the DMA request reading the MA702.
+        nvic.set_priority(device::Interrupt::DMA1_CH2, 0x10);
+        // Finally the FDCAN.
+        nvic.set_priority(device::Interrupt::FDCAN1_INTR0_IT, 0xFF);
+        nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0xFF);
     }
 
     Driver {
