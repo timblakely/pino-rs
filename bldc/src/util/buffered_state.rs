@@ -65,6 +65,8 @@ pub struct StateWriter<'a, T: Copy> {
     _life: PhantomData<&'a ()>,
 }
 
+unsafe impl<'a, T: Copy> Send for StateWriter<'a, T> {}
+
 impl<'a, T: Copy> StateWriter<'a, T> {
     pub fn update(&mut self) -> StateGuard<'a, T> {
         // Safety: enforced to be non-null by NonNull

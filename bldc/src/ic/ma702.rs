@@ -2,13 +2,25 @@
 
 use crate::block_until;
 use crate::block_while;
+use crate::util::buffered_state::{BufferedState, StateReader, StateWriter};
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::enable_irq;
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
+use third_party::m4vga_rs::util::sync::acquire_hw;
 
 // Static location in memory to stream the raw angle measurements to. This has to be a) in a
 // consistent location and b) In RAM, not flash.
-static mut ANGLE: u16 = 0;
+pub static mut ANGLE: u16 = 0;
+
+#[derive(Clone, Copy)]
+pub struct AngleState {
+    pub raw_angle: u16,
+    pub angle: f32, // Radians
+    pub angular_velocity: f32,
+    pub angular_acceleration: f32,
+    pub last_angle: Option<f32>,
+    pub last_velocity: Option<f32>,
+}
 
 pub struct Ma702<S> {
     // TODO(blakely): Make generic via a trait or enum.
@@ -16,6 +28,8 @@ pub struct Ma702<S> {
 
     #[allow(dead_code)]
     mode_state: S,
+
+    state: BufferedState<'static, AngleState>,
 }
 
 pub struct Init {}
@@ -27,6 +41,14 @@ pub fn new(spi: device::SPI1) -> Ma702<Init> {
     Ma702 {
         spi,
         mode_state: Init {},
+        state: BufferedState::new(AngleState {
+            raw_angle: 0,
+            angle: 0.,
+            angular_acceleration: 0.,
+            angular_velocity: 0.,
+            last_angle: None,
+            last_velocity: None,
+        }),
     }
 }
 
@@ -67,6 +89,7 @@ impl Ma702<Init> {
         Ma702 {
             spi: spi1,
             mode_state: Ready {},
+            state: self.state,
         }
     }
 }
@@ -180,9 +203,14 @@ impl Ma702<Ready> {
         dmamux.c1cr.modify(|_, w| unsafe { w.dmareq_id().bits(65) });
     }
 
-    pub fn begin_stream(self, dma: device::DMA1, dmamux: &device::DMAMUX) -> Ma702<Streaming> {
+    pub fn begin_stream(mut self, dma: device::DMA1, dmamux: &device::DMAMUX) -> Ma702<Streaming> {
         self.configure_tx_stream(&dma, dmamux);
         self.configure_rx_stream(&dma, dmamux);
+
+        let (reader, writer) = self.state.split();
+
+        *MA702_STATE_READER.lock() = Some(reader);
+        *MA702_STATE_WRITER.lock() = Some(writer);
 
         // Enable SPI.
         self.spi.cr1.modify(|_, w| w.spe().set_bit());
@@ -208,17 +236,13 @@ impl Ma702<Ready> {
         Ma702 {
             spi: self.spi,
             mode_state: Streaming {},
+            state: self.state,
         }
     }
 }
 
+// TODO(blakely): Combine this and the state writer into a single lock.
 pub static DMA1: SpinLock<Option<device::DMA1>> = SpinLock::new(None);
 
-impl Ma702<Streaming> {
-    pub fn angle(&self) -> u16 {
-        // Safety: We're reading a mutable static, which is usually unsafe; potentially moreso
-        // because the value is written to by the DMA. However, reads of this should be atomic and
-        // uninterrupted by the DMA.
-        unsafe { ANGLE >> 3 }
-    }
-}
+pub static MA702_STATE_READER: SpinLock<Option<StateReader<AngleState>>> = SpinLock::new(None);
+pub static MA702_STATE_WRITER: SpinLock<Option<StateWriter<AngleState>>> = SpinLock::new(None);
