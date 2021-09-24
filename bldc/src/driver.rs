@@ -548,7 +548,7 @@ impl Driver<Init> {
         self.configure_gpio();
         self.configure_timers();
 
-        let ma702 = ma702::new(self.mode_state.spi1)
+        let ma702 = ma702::new(self.mode_state.spi1, self.mode_state.tim3)
             .configure_spi()
             .begin_stream(self.mode_state.dma1, &self.mode_state.dmamux);
 
@@ -610,9 +610,6 @@ impl Driver<Init> {
         enable_irq(device::Interrupt::FDCAN1_INTR1_IT);
         // ADC1 IRQ
         enable_irq(device::Interrupt::ADC1_2);
-
-        // Kick off tim3.
-        self.mode_state.tim3.cr1.modify(|_, w| w.cen().set_bit());
 
         let cordic = self.mode_state.cordic;
         // Safety: yet another SVD range missing. Valid ranges for precision is 1-15

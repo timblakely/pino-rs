@@ -3,6 +3,7 @@
 use crate::block_until;
 use crate::block_while;
 use crate::util::buffered_state::{BufferedState, StateReader, StateWriter};
+use crate::util::stm32::blocking_sleep_us;
 use core::f32::consts::PI;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, enable_irq};
@@ -18,7 +19,7 @@ pub static mut ANGLE: u16 = 0;
 
 #[derive(Clone, Copy)]
 pub struct AngleState {
-    pub raw_angle: u16,
+    pub raw_angle: Option<u16>,
     pub angle: f32, // Radians
     pub velocity: f32,
     pub acceleration: f32,
@@ -27,6 +28,7 @@ pub struct AngleState {
 pub struct Ma702<S> {
     // TODO(blakely): Make generic via a trait or enum.
     spi: device::SPI1,
+    tim3: device::TIM3,
 
     #[allow(dead_code)]
     mode_state: S,
@@ -35,11 +37,14 @@ pub struct Ma702<S> {
 pub struct Init {}
 pub struct Ready {}
 
-pub struct Streaming {}
+pub struct Streaming {
+    state: StateReader<AngleState>,
+}
 
-pub fn new(spi: device::SPI1) -> Ma702<Init> {
+pub fn new(spi: device::SPI1, tim3: device::TIM3) -> Ma702<Init> {
     Ma702 {
         spi,
+        tim3,
         mode_state: Init {},
     }
 }
@@ -80,6 +85,7 @@ impl Ma702<Init> {
 
         Ma702 {
             spi: spi1,
+            tim3: self.tim3,
             mode_state: Ready {},
         }
     }
@@ -200,14 +206,12 @@ impl Ma702<Ready> {
 
         let mut angle_state = MA702_STATE.lock();
         *angle_state = Some(BufferedState::new(AngleState {
-            raw_angle: 0,
+            raw_angle: None,
             angle: 0.,
             acceleration: 0.,
             velocity: 0.,
         }));
         let (reader, writer) = angle_state.as_mut().expect("asdf").split();
-
-        *MA702_STATE_READER.lock() = Some(reader);
         *MA702_STATE_WRITER.lock() = Some(writer);
 
         // Enable SPI.
@@ -218,22 +222,32 @@ impl Ma702<Ready> {
         dma.ccr1.modify(|_, w| w.en().set_bit());
         block_until! {  dma.ccr1.read().en().bit_is_set() }
 
-        // Enable the DMA1[CH2] interrupt in NVIC.
-        enable_irq(device::Interrupt::DMA1_CH2);
-        // Enable the DMA1[CH2] Transfer Complete interrupt so that the handler is called when the
-        // transfer from SPI to memory is complete.
-        dma.ccr2.modify(|_, w| w.tcie().set_bit());
-
         // Enable DMA stream 2.
         dma.ccr2.modify(|_, w| w.en().set_bit());
         block_until! {  dma.ccr2.read().en().bit_is_set() }
 
-        // Donate the DMA so that the interrupt handler can clear the interrupt flag.
-        *DMA1.lock() = Some(dma);
+        // Kick off tim3 to start the stream.
+        self.tim3.cr1.modify(|_, w| w.cen().set_bit());
+        // Wait a bit to ensure there's no garbage coming across SPI
+        blocking_sleep_us(5000);
+
+        // Enable the DMA1[CH2] Transfer Complete interrupt so that the handler is called when the
+        // transfer from SPI to memory is complete.
+        dma.ccr2.modify(|_, w| w.tcie().set_bit());
+
+        // Make sure we drop the lock before we enable the IRQ
+        {
+            // Donate the DMA so that the interrupt handler can clear the interrupt flag.
+            *DMA1.lock() = Some(dma);
+        }
+
+        // Enable the DMA1[CH2] interrupt in NVIC.
+        enable_irq(device::Interrupt::DMA1_CH2);
 
         Ma702 {
             spi: self.spi,
-            mode_state: Streaming {},
+            tim3: self.tim3,
+            mode_state: Streaming { state: reader },
         }
     }
 }
@@ -242,7 +256,6 @@ impl Ma702<Ready> {
 pub static DMA1: SpinLock<Option<device::DMA1>> = SpinLock::new(None);
 
 pub static MA702_STATE: SpinLock<Option<BufferedState<AngleState>>> = SpinLock::new(None);
-pub static MA702_STATE_READER: SpinLock<Option<StateReader<AngleState>>> = SpinLock::new(None);
 pub static MA702_STATE_WRITER: SpinLock<Option<StateWriter<AngleState>>> = SpinLock::new(None);
 
 // This is the interrupt that fires when the transfer from the `SPI[DR]` register transaction is complete.
@@ -251,16 +264,24 @@ fn DMA1_CH2() {
     // Clear pending IRQ in NVIC.
     clear_pending_irq(device::Interrupt::DMA1_CH2);
 
-    let mut state = acquire_hw(&MA702_STATE_WRITER).update();
-    let last = state.other();
+    let mut state = acquire_hw(&MA702_STATE_WRITER);
+    let mut state = state.update();
     let raw_angle = unsafe { ANGLE >> 4 };
     let angle = raw_angle as f32 / 4096. * TWO_PI;
 
-    let velocity = (angle - last.angle) / FREQ_HZ;
-    let acceleration = (state.velocity - last.velocity) / FREQ_HZ;
+    let (last_angle, last_velocity) = match state.other().raw_angle {
+        None => (angle, 0f32),
+        Some(_) => {
+            let other = state.other();
+            (other.angle, other.velocity)
+        }
+    };
+
+    let velocity = (angle - last_angle) / FREQ_HZ;
+    let acceleration = (state.velocity - last_velocity) / FREQ_HZ;
 
     *state = AngleState {
-        raw_angle,
+        raw_angle: Some(raw_angle),
         angle,
         velocity,
         acceleration,
