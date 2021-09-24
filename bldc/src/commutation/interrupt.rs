@@ -35,6 +35,8 @@ fn ADC1_2() {
     // the IRQ was cleared in the NVIC above.
     loop_vars.hw.current_sensor.acknowledge_eos();
 
+    loop_vars.hw.encoder.update(1. / 40000.);
+
     let commutator = match loop_vars.control_loop {
         Some(ref mut x) => x,
         _ => return,

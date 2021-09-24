@@ -252,6 +252,12 @@ impl Ma702<Ready> {
     }
 }
 
+impl Ma702<Streaming> {
+    pub fn state(&self) -> &AngleState {
+        self.mode_state.state.read()
+    }
+}
+
 // TODO(blakely): Combine this and the state writer into a single lock.
 pub static DMA1: SpinLock<Option<device::DMA1>> = SpinLock::new(None);
 

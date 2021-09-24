@@ -1,6 +1,6 @@
 use crate::{
     current_sensing::{self, CurrentMeasurement, CurrentSensor},
-    ic::ma702::{Ma702, Streaming},
+    encoder::Encoder,
     util::interrupts::InterruptBLock,
 };
 use stm32g4::stm32g474 as device;
@@ -21,7 +21,7 @@ pub use idle_current_sensor::*;
 pub struct ControlHardware {
     pub current_sensor: CurrentSensor<current_sensing::Ready>,
     pub tim1: device::TIM1,
-    pub ma702: Ma702<Streaming>,
+    pub encoder: Encoder,
 }
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.

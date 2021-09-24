@@ -11,5 +11,7 @@ impl Encoder {
         Encoder { ma702 }
     }
 
-    pub fn update(&mut self, delta_t: f32) {}
+    pub fn update(&mut self, _delta_t: f32) {
+        let _angle_state = self.ma702.state();
+    }
 }

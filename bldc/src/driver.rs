@@ -5,6 +5,7 @@ use crate::commutation::{
     CalibrateADC, Commutator, ControlHardware, ControlLoopVars, CONTROL_LOOP,
 };
 use crate::current_sensing;
+use crate::encoder::Encoder;
 use crate::memory::initialize_heap;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
@@ -552,6 +553,8 @@ impl Driver<Init> {
             .configure_spi()
             .begin_stream(self.mode_state.dma1, &self.mode_state.dmamux);
 
+        let encoder = Encoder::new(ma702);
+
         let gpioc = &self.mode_state.gpioc;
         let drv = drv8323rs::new(self.mode_state.spi3)
             .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
@@ -646,7 +649,7 @@ impl Driver<Init> {
             hw: ControlHardware {
                 current_sensor: current_sensor,
                 tim1: self.mode_state.tim1,
-                ma702,
+                encoder,
             },
         });
 
