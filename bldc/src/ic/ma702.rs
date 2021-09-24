@@ -211,8 +211,6 @@ impl Ma702<Ready> {
             acceleration: 0.,
             velocity: 0.,
         }));
-        let (reader, writer) = angle_state.as_mut().expect("asdf").split();
-        *MA702_STATE_WRITER.lock() = Some(writer);
 
         // Enable SPI.
         self.spi.cr1.modify(|_, w| w.spe().set_bit());
@@ -235,11 +233,10 @@ impl Ma702<Ready> {
         // transfer from SPI to memory is complete.
         dma.ccr2.modify(|_, w| w.tcie().set_bit());
 
-        // Make sure we drop the lock before we enable the IRQ
-        {
-            // Donate the DMA so that the interrupt handler can clear the interrupt flag.
-            *DMA1.lock() = Some(dma);
-        }
+        let (reader, writer) = angle_state.as_mut().expect("asdf").split();
+        // Donate the DMA so that the interrupt handler can clear the interrupt flag, and the writer
+        // so that it can update the sensor's state.
+        *MA702_INTERRUPT_DATA.lock() = Some((dma, writer));
 
         // Enable the DMA1[CH2] interrupt in NVIC.
         enable_irq(device::Interrupt::DMA1_CH2);
@@ -258,11 +255,9 @@ impl Ma702<Streaming> {
     }
 }
 
-// TODO(blakely): Combine this and the state writer into a single lock.
-pub static DMA1: SpinLock<Option<device::DMA1>> = SpinLock::new(None);
-
 pub static MA702_STATE: SpinLock<Option<BufferedState<AngleState>>> = SpinLock::new(None);
-pub static MA702_STATE_WRITER: SpinLock<Option<StateWriter<AngleState>>> = SpinLock::new(None);
+pub static MA702_INTERRUPT_DATA: SpinLock<Option<(device::DMA1, StateWriter<AngleState>)>> =
+    SpinLock::new(None);
 
 // This is the interrupt that fires when the transfer from the `SPI[DR]` register transaction is complete.
 #[interrupt]
@@ -270,11 +265,12 @@ fn DMA1_CH2() {
     // Clear pending IRQ in NVIC.
     clear_pending_irq(device::Interrupt::DMA1_CH2);
 
-    let mut state = acquire_hw(&MA702_STATE_WRITER);
+    let (dma, ref mut state) = &mut *acquire_hw(&MA702_INTERRUPT_DATA);
     let mut state = state.update();
     let raw_angle = unsafe { ANGLE >> 4 };
     let angle = raw_angle as f32 / 4096. * TWO_PI;
 
+    // Special case when it's the very first reading to protect against first-sample velocity.
     let (last_angle, last_velocity) = match state.other().raw_angle {
         None => (angle, 0f32),
         Some(_) => {
@@ -293,7 +289,5 @@ fn DMA1_CH2() {
         acceleration,
     };
 
-    // Finally clear the IRQ flag in the DMA itself.
-    let dma = acquire_hw(&DMA1);
     dma.ifcr.write(|w| w.gif2().set_bit());
 }

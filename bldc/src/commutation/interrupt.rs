@@ -27,7 +27,6 @@ fn ADC1_2() {
         *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
     }
 
-    // If there's a control callback, call it. Otherwise just idle.
     let mut loop_vars = CONTROL_LOOP.lock();
     let mut loop_vars = loop_vars.as_mut().expect("Loop variables not set");
 
@@ -35,8 +34,10 @@ fn ADC1_2() {
     // the IRQ was cleared in the NVIC above.
     loop_vars.hw.current_sensor.acknowledge_eos();
 
+    // TODO(blakely): use this.
     loop_vars.hw.encoder.update(1. / 40000.);
 
+    // If there's a control callback, call it. Otherwise just idle.
     let commutator = match loop_vars.control_loop {
         Some(ref mut x) => x,
         _ => return,
