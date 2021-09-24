@@ -254,6 +254,7 @@ impl Ma702<Ready> {
         tim3.cr1.modify(|_, w| w.cen().set_bit());
     }
 
+    // TODO(blakely): Allow slection of interrupt or polling for async mode.
     pub fn begin_stream_interrupt(
         mut self,
         dma: device::DMA1,
