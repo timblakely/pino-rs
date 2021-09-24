@@ -25,6 +25,18 @@ pub struct AngleState {
     pub acceleration: f32,
 }
 
+impl AngleState {
+    // Advance the angle according to simple newtonian physics.
+    pub fn advance(&self, dt: f32) -> AngleState {
+        AngleState {
+            raw_angle: None,
+            angle: self.angle + self.velocity * dt,
+            velocity: self.velocity + self.acceleration * dt,
+            acceleration: self.acceleration,
+        }
+    }
+}
+
 pub struct Ma702<S> {
     // TODO(blakely): Make generic via a trait or enum.
     spi: device::SPI1,
@@ -80,6 +92,9 @@ impl Ma702<Init> {
                 .ds()
                 .sixteen_bit()
                 .nssp()
+                .set_bit()
+                // Enable RX DMA trigger
+                .rxdmaen()
                 .set_bit()
         });
 
@@ -197,20 +212,12 @@ impl Ma702<Ready> {
         // TIM3 Update to the DMA stream2 - TIM3_UP = 65
         // Safety: Upstream: This should be an enum.
         // TODO(blakely): Add enum values to `stm32-rs`
-        dmamux.c1cr.modify(|_, w| unsafe { w.dmareq_id().bits(65) });
+        dmamux.c1cr.modify(|_, w| unsafe { w.dmareq_id().bits(10) });
     }
 
-    pub fn begin_stream(self, dma: device::DMA1, dmamux: &device::DMAMUX) -> Ma702<Streaming> {
-        self.configure_tx_stream(&dma, dmamux);
-        self.configure_rx_stream(&dma, dmamux);
-
-        let mut angle_state = MA702_STATE.lock();
-        *angle_state = Some(BufferedState::new(AngleState {
-            raw_angle: None,
-            angle: 0.,
-            acceleration: 0.,
-            velocity: 0.,
-        }));
+    fn start_stream(&mut self, dma: &device::DMA1, dmamux: &device::DMAMUX) {
+        self.configure_tx_stream(dma, dmamux);
+        self.configure_rx_stream(dma, dmamux);
 
         // Enable SPI.
         self.spi.cr1.modify(|_, w| w.spe().set_bit());
@@ -226,14 +233,35 @@ impl Ma702<Ready> {
 
         // Kick off tim3 to start the stream.
         self.tim3.cr1.modify(|_, w| w.cen().set_bit());
-        // Wait a bit to ensure there's no garbage coming across SPI
-        blocking_sleep_us(5000);
+    }
+
+    pub fn begin_stream_interrupt(
+        mut self,
+        dma: device::DMA1,
+        dmamux: &device::DMAMUX,
+    ) -> Ma702<Streaming> {
+        self.start_stream(&dma, dmamux);
+
+        let mut angle_state = MA702_STATE.lock();
+        *angle_state = Some(BufferedState::new(AngleState {
+            raw_angle: None,
+            angle: 0.,
+            acceleration: 0.,
+            velocity: 0.,
+        }));
 
         // Enable the DMA1[CH2] Transfer Complete interrupt so that the handler is called when the
         // transfer from SPI to memory is complete.
         dma.ccr2.modify(|_, w| w.tcie().set_bit());
 
-        let (reader, writer) = angle_state.as_mut().expect("asdf").split();
+        let (reader, writer) = angle_state
+            .as_mut()
+            .expect("Cannot acquire MA702 state")
+            .split();
+
+        // Clear DMA IRQ flag.
+        dma.ifcr.write(|w| w.gif2().set_bit());
+
         // Donate the DMA so that the interrupt handler can clear the interrupt flag, and the writer
         // so that it can update the sensor's state.
         *MA702_INTERRUPT_DATA.lock() = Some((dma, writer));
@@ -259,13 +287,16 @@ pub static MA702_STATE: SpinLock<Option<BufferedState<AngleState>>> = SpinLock::
 pub static MA702_INTERRUPT_DATA: SpinLock<Option<(device::DMA1, StateWriter<AngleState>)>> =
     SpinLock::new(None);
 
-// This is the interrupt that fires when the transfer from the `SPI[DR]` register transaction is complete.
+// This is the interrupt that fires when the transfer from the `SPI[DR]` register transaction is
+// complete.
 #[interrupt]
 fn DMA1_CH2() {
     // Clear pending IRQ in NVIC.
     clear_pending_irq(device::Interrupt::DMA1_CH2);
 
     let (dma, ref mut state) = &mut *acquire_hw(&MA702_INTERRUPT_DATA);
+
+    // Get a reference to the state that's not being read.
     let mut state = state.update();
     let raw_angle = unsafe { ANGLE >> 4 };
     let angle = raw_angle as f32 / 4096. * TWO_PI;
@@ -289,5 +320,6 @@ fn DMA1_CH2() {
         acceleration,
     };
 
+    // Clear DMA IRQ flag.
     dma.ifcr.write(|w| w.gif2().set_bit());
 }
