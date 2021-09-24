@@ -31,11 +31,11 @@ impl<'a, T: Sized + Copy> BufferedState<'a, T> {
     pub fn split(&mut self) -> (StateReader<'a, T>, StateWriter<'a, T>) {
         (
             StateReader {
-                state: unsafe { NonNull::new_unchecked(self) },
+                state: NonNull::new(self).expect("Passed a null ptr"),
                 _life: PhantomData,
             },
             StateWriter {
-                state: unsafe { NonNull::new_unchecked(self) },
+                state: NonNull::new(self).expect("Passed a null ptr"),
                 _life: PhantomData,
             },
         )
