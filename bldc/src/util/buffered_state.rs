@@ -6,48 +6,42 @@
 //! reads.
 
 use core::{
-    marker::PhantomData,
     ops::{Deref, DerefMut},
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-pub struct BufferedState<'a, T: Sized + Copy> {
+pub struct BufferedState<T: Sized + Copy> {
     current: AtomicUsize,
     value: [T; 2],
-    _life: PhantomData<&'a ()>,
 }
 
-impl<'a, T: Sized + Copy> BufferedState<'a, T> {
+impl<'a, T: Sized + Copy> BufferedState<T> {
     // Creates a BufferedState
     pub fn new(initial_state: T) -> Self {
         BufferedState {
             current: AtomicUsize::new(0),
             value: [initial_state.clone(), initial_state.clone()],
-            _life: PhantomData,
         }
     }
 
-    pub fn split(&mut self) -> (StateReader<'a, T>, StateWriter<'a, T>) {
+    pub fn split(&mut self) -> (StateReader<T>, StateWriter<T>) {
         (
             StateReader {
                 state: NonNull::new(self).expect("Passed a null ptr"),
-                _life: PhantomData,
             },
             StateWriter {
                 state: NonNull::new(self).expect("Passed a null ptr"),
-                _life: PhantomData,
             },
         )
     }
 }
 
-pub struct StateReader<'a, T: Copy> {
-    state: NonNull<BufferedState<'a, T>>,
-    _life: PhantomData<&'a ()>,
+pub struct StateReader<T: Copy> {
+    state: NonNull<BufferedState<T>>,
 }
 
-impl<'a, T: Copy> StateReader<'a, T> {
+impl<T: Copy> StateReader<T> {
     pub fn read(&self) -> &T {
         // Safety: enforced to be non-null by NonNull
         let state = unsafe { self.state.as_ref() };
@@ -58,17 +52,16 @@ impl<'a, T: Copy> StateReader<'a, T> {
     }
 }
 
-unsafe impl<'a, T: Copy> Send for StateReader<'a, T> {}
+unsafe impl<T: Copy> Send for StateReader<T> {}
 
-pub struct StateWriter<'a, T: Copy> {
-    state: NonNull<BufferedState<'a, T>>,
-    _life: PhantomData<&'a ()>,
+pub struct StateWriter<T: Copy> {
+    state: NonNull<BufferedState<T>>,
 }
 
-unsafe impl<'a, T: Copy> Send for StateWriter<'a, T> {}
+unsafe impl<T: Copy> Send for StateWriter<T> {}
 
-impl<'a, T: Copy> StateWriter<'a, T> {
-    pub fn update(&mut self) -> StateGuard<'a, T> {
+impl<T: Copy> StateWriter<T> {
+    pub fn update(&mut self) -> StateGuard<T> {
         // Safety: enforced to be non-null by NonNull
         let state = unsafe { self.state.as_mut() };
 
