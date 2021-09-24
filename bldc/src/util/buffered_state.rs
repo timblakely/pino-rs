@@ -72,38 +72,49 @@ impl<'a, T: Copy> StateWriter<'a, T> {
         // Safety: enforced to be non-null by NonNull
         let state = unsafe { self.state.as_mut() };
 
-        // Identify which buffer is safe for writing to.
-        let target = match state.current.load(Ordering::Acquire) {
-            0 => 1,
-            _ => 0,
-        };
-
-        StateGuard {
-            data: &mut state.value[target],
-            current: &mut state.current,
-            target,
-        }
+        StateGuard::new(&mut state.value, &mut state.current)
     }
 }
 
 pub struct StateGuard<'a, T: Copy> {
-    data: &'a mut T,
+    data: &'a mut [T; 2],
     current: &'a mut AtomicUsize,
     target: usize,
+    other: usize,
+}
+
+impl<'a, T: Copy> StateGuard<'a, T> {
+    fn new(data: &'a mut [T; 2], current: &'a mut AtomicUsize) -> StateGuard<'a, T> {
+        // Identify which buffer is safe for writing to.
+        let (target, other) = match current.load(Ordering::Acquire) {
+            0 => (1, 0),
+            _ => (0, 1),
+        };
+        StateGuard {
+            data,
+            current,
+            target,
+            other,
+        }
+    }
+
+    pub fn other(&self) -> &T {
+        &self.data[self.other]
+    }
 }
 
 impl<'a, T: Copy> Deref for StateGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.data
+        &self.data[self.target]
     }
 }
 
 impl<'a, T: Copy> DerefMut for StateGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // Guaranteed to be not-null by NotNull, and lifetime guarded by 'a.
-        self.data
+        &mut self.data[self.target]
     }
 }
 
