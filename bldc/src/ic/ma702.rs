@@ -22,6 +22,8 @@ pub struct AngleState {
     pub angle: f32, // Radians
     pub velocity: f32,
     pub acceleration: f32,
+    pub turns: u32,
+    pub angle_multiturn: f32,
 }
 
 impl AngleState {
@@ -31,16 +33,8 @@ impl AngleState {
             angle: 0.,
             acceleration: 0.,
             velocity: 0.,
-        }
-    }
-
-    // Advance the angle according to simple newtonian physics.
-    pub fn advance(&self, dt: f32) -> AngleState {
-        AngleState {
-            raw_angle: None,
-            angle: self.angle + self.velocity * dt,
-            velocity: self.velocity + self.acceleration * dt,
-            acceleration: self.acceleration,
+            turns: 0,
+            angle_multiturn: 0.,
         }
     }
 }
@@ -349,6 +343,8 @@ fn read_angle() -> (u16, f32) {
     (raw_angle, angle)
 }
 
+// TODO(blakely): Handle non-ero offsets and correct for negative angle values (keep between 0 and
+// 2pi)
 fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState {
     let (raw_angle, angle) = read_angle();
     // Special case when it's the very first reading to protect against first-sample velocity.
@@ -360,7 +356,22 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
         }
     };
 
-    let velocity = (angle - last_angle) * delta_t;
+    let turns = old_state.turns;
+    let d_angle = match angle - last_angle {
+        d_angle if d_angle > PI => {
+            // Rolled over backwards.
+            turns -= 1;
+            d_angle - TWO_PI
+        }
+        d_angle if d_angle < -PI => {
+            // Rolled over forwards.
+            turns += 1;
+            d_angle - TWO_PI
+        }
+        d_angle => d_angle,
+    };
+
+    let velocity = d_angle * delta_t;
     let acceleration = (velocity - last_velocity) * delta_t;
 
     AngleState {
@@ -368,6 +379,8 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
         angle,
         velocity,
         acceleration,
+        turns,
+        angle_multiturn: turns as f32 * TWO_PI + angle,
     }
 }
 
