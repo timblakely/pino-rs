@@ -230,6 +230,8 @@ impl Driver<Init> {
         // PA15 - SPI3 - DRV_CS - AF6
         // PB1 - ADC3_IN1 - SENSE_C
         // PB5 - SPI3 - DRV_MOSI - AF6
+        // PB6 - LED 2
+        // PB7 - LED 3
         // PB9 - LED 1
         // PB12 - ADC4_IN3 - SENSE_BAT
         // PC6 - DRV_ENABLE
@@ -271,6 +273,10 @@ impl Driver<Init> {
                 .analog()
                 .moder5()
                 .alternate()
+                .moder6()
+                .output()
+                .moder7()
+                .output()
                 .moder9()
                 .output()
                 .moder12()
@@ -329,9 +335,16 @@ impl Driver<Init> {
                 .ot15()
                 .push_pull()
         });
-        gpiob
-            .otyper
-            .modify(|_, w| w.ot5().push_pull().ot9().push_pull());
+        gpiob.otyper.modify(|_, w| {
+            w.ot5()
+                .push_pull()
+                .ot6()
+                .push_pull()
+                .ot7()
+                .push_pull()
+                .ot9()
+                .push_pull()
+        });
         gpioc
             .otyper
             .modify(|_, w| w.ot6().push_pull().ot10().push_pull().ot11().push_pull());
@@ -359,9 +372,16 @@ impl Driver<Init> {
                 .ospeedr15()
                 .very_high_speed()
         });
-        gpiob
-            .ospeedr
-            .modify(|_, w| w.ospeedr5().very_high_speed().ospeedr9().very_high_speed());
+        gpiob.ospeedr.modify(|_, w| {
+            w.ospeedr5()
+                .very_high_speed()
+                .ospeedr6()
+                .very_high_speed()
+                .ospeedr7()
+                .very_high_speed()
+                .ospeedr9()
+                .very_high_speed()
+        });
         gpioc.ospeedr.modify(|_, w| {
             w.ospeedr6()
                 .very_high_speed()
@@ -394,9 +414,16 @@ impl Driver<Init> {
                 .pupdr15()
                 .pull_up()
         });
-        gpiob
-            .pupdr
-            .modify(|_, w| w.pupdr5().floating().pupdr9().floating());
+        gpiob.pupdr.modify(|_, w| {
+            w.pupdr5()
+                .floating()
+                .pupdr6()
+                .floating()
+                .pupdr7()
+                .floating()
+                .pupdr9()
+                .floating()
+        });
         gpioc.pupdr.modify(|_, w| {
             w.pupdr6()
                 .floating()
@@ -551,7 +578,7 @@ impl Driver<Init> {
 
         let ma702 = ma702::new(self.mode_state.spi1, self.mode_state.tim3)
             .configure_spi()
-            .begin_stream(self.mode_state.dma1, &self.mode_state.dmamux);
+            .begin_stream_interrupt(self.mode_state.dma1, &self.mode_state.dmamux);
 
         let encoder = Encoder::new(ma702);
 
