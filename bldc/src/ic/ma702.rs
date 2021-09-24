@@ -79,7 +79,7 @@ impl Ma702<Init> {
                 .mstr()
                 .set_bit()
                 .br()
-                .div128()
+                .div64()
                 .crcen()
                 .clear_bit()
         });
@@ -249,7 +249,7 @@ impl Ma702<Ready> {
         tim3.psc.write(|w| w.psc().bits(3));
         // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 42500 is within
         // range.
-        tim3.arr.write(|w| unsafe { w.arr().bits(42500) });
+        tim3.arr.write(|w| unsafe { w.arr().bits(425) });
         // Kick off tim3 to start the stream.
         tim3.cr1.modify(|_, w| w.cen().set_bit());
     }
@@ -310,6 +310,20 @@ pub static MA702_INTERRUPT_DATA: SpinLock<Option<(device::DMA1, StateWriter<Angl
 // complete.
 #[interrupt]
 fn DMA1_CH2() {
+    unsafe {
+        *(0x4800_0418 as *mut u32) = 1 << 6;
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        *(0x4800_0418 as *mut u32) = 1 << (6 + 16);
+    }
     // Clear pending IRQ in NVIC.
     clear_pending_irq(device::Interrupt::DMA1_CH2);
 
