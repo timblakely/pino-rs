@@ -558,7 +558,7 @@ impl Driver<Init> {
 
         let ma702 = ma702::new(self.mode_state.spi1, self.mode_state.tim3)
             .configure_spi()
-            .begin_stream_interrupt(self.mode_state.dma1, &self.mode_state.dmamux);
+            .begin_stream_polling(self.mode_state.dma1, &self.mode_state.dmamux);
 
         let encoder = Encoder::new(ma702);
 
