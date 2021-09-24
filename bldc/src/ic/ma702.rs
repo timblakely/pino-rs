@@ -231,8 +231,27 @@ impl Ma702<Ready> {
         dma.ccr2.modify(|_, w| w.en().set_bit());
         block_until! {  dma.ccr2.read().en().bit_is_set() }
 
+        // Configure TIM3 for 1kHz polling of SPI1
+        let tim3 = &self.tim3;
+        // Stop the timer if it's running for some reason.
+        tim3.cr1.modify(|_, w| w.cen().clear_bit());
+        block_until!(tim3.cr1.read().cen().bit_is_clear());
+        // Edge aligned mode, and up counting.
+        tim3.cr1.modify(|_, w| w.dir().up().cms().edge_aligned());
+        // Fire off a DMA on update (i.e. counter overflow)
+        tim3.dier.modify(|_, w| w.ude().set_bit());
+        // Assuming 170MHz core clock, set prescalar to 4 and ARR to 42500 for 170e6/42500/4=1kHz.
+        // Why is the value actually 3 and not 4? The timer clock is set to `core_clk / (PSC[PSC] +
+        // 1)`. If it were to use the value directly it'd divide the clock by zero on reset, which
+        // would be A Bad Thing.
+        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 3 is well
+        // within range.
+        tim3.psc.write(|w| w.psc().bits(3));
+        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 42500 is within
+        // range.
+        tim3.arr.write(|w| unsafe { w.arr().bits(42500) });
         // Kick off tim3 to start the stream.
-        self.tim3.cr1.modify(|_, w| w.cen().set_bit());
+        tim3.cr1.modify(|_, w| w.cen().set_bit());
     }
 
     pub fn begin_stream_interrupt(
@@ -298,6 +317,10 @@ fn DMA1_CH2() {
 
     // Get a reference to the state that's not being read.
     let mut state = state.update();
+    // Safety: accessing global mutable values is inherently unsafe. Technically ANGLE doesn't need
+    // to be mutable since no user code is mutating it, but it _is_ modified by the DMA controller,
+    // so better safe than sorry. That said, read access to it should be atomic and take only a
+    // single instruction.
     let raw_angle = unsafe { ANGLE >> 4 };
     let angle = raw_angle as f32 / 4096. * TWO_PI;
 

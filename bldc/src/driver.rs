@@ -435,26 +435,6 @@ impl Driver<Init> {
     }
 
     fn configure_timers(&self) {
-        // Configure TIM3 for 1kHz polling of SPI1
-        let tim3 = &self.mode_state.tim3;
-        // Stop the timer if it's running for some reason.
-        tim3.cr1.modify(|_, w| w.cen().clear_bit());
-        block_until!(tim3.cr1.read().cen().bit_is_clear());
-        // Edge aligned mode, and up counting.
-        tim3.cr1.modify(|_, w| w.dir().up().cms().edge_aligned());
-        // Fire off a DMA on update (i.e. counter overflow)
-        tim3.dier.modify(|_, w| w.ude().set_bit());
-        // Assuming 170MHz core clock, set prescalar to 4 and ARR to 42500 for 170e6/42500/4=1kHz.
-        // Why is the value actually 3 and not 4? The timer clock is set to `core_clk / (PSC[PSC] +
-        // 1)`. If it were to use the value directly it'd divide the clock by zero on reset, which
-        // would be A Bad Thing.
-        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 3 is well
-        // within range.
-        tim3.psc.write(|w| w.psc().bits(3));
-        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 42500 is within
-        // range.
-        tim3.arr.write(|w| unsafe { w.arr().bits(42500) });
-
         // Configure TIM1 for 40kHz control loop (80kHz frequency, since up + down = 1 full cycle).
         let tim1 = &self.mode_state.tim1;
         // Stop the timer if it's running for some reason.
