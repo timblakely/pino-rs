@@ -3,10 +3,14 @@
 use crate::block_until;
 use crate::block_while;
 use crate::util::buffered_state::{BufferedState, StateReader, StateWriter};
-use stm32g4::stm32g474 as device;
-use third_party::m4vga_rs::util::armv7m::enable_irq;
+use core::f32::consts::PI;
+use stm32g4::stm32g474::{self as device, interrupt};
+use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, enable_irq};
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
 use third_party::m4vga_rs::util::sync::acquire_hw;
+
+const FREQ_HZ: f32 = 1000.;
+const TWO_PI: f32 = 2. * PI;
 
 // Static location in memory to stream the raw angle measurements to. This has to be a) in a
 // consistent location and b) In RAM, not flash.
@@ -16,10 +20,8 @@ pub static mut ANGLE: u16 = 0;
 pub struct AngleState {
     pub raw_angle: u16,
     pub angle: f32, // Radians
-    pub angular_velocity: f32,
-    pub angular_acceleration: f32,
-    pub last_angle: Option<f32>,
-    pub last_velocity: Option<f32>,
+    pub velocity: f32,
+    pub acceleration: f32,
 }
 
 pub struct Ma702<S> {
@@ -28,8 +30,6 @@ pub struct Ma702<S> {
 
     #[allow(dead_code)]
     mode_state: S,
-
-    state: BufferedState<'static, AngleState>,
 }
 
 pub struct Init {}
@@ -41,14 +41,6 @@ pub fn new(spi: device::SPI1) -> Ma702<Init> {
     Ma702 {
         spi,
         mode_state: Init {},
-        state: BufferedState::new(AngleState {
-            raw_angle: 0,
-            angle: 0.,
-            angular_acceleration: 0.,
-            angular_velocity: 0.,
-            last_angle: None,
-            last_velocity: None,
-        }),
     }
 }
 
@@ -89,7 +81,6 @@ impl Ma702<Init> {
         Ma702 {
             spi: spi1,
             mode_state: Ready {},
-            state: self.state,
         }
     }
 }
@@ -203,11 +194,18 @@ impl Ma702<Ready> {
         dmamux.c1cr.modify(|_, w| unsafe { w.dmareq_id().bits(65) });
     }
 
-    pub fn begin_stream(mut self, dma: device::DMA1, dmamux: &device::DMAMUX) -> Ma702<Streaming> {
+    pub fn begin_stream(self, dma: device::DMA1, dmamux: &device::DMAMUX) -> Ma702<Streaming> {
         self.configure_tx_stream(&dma, dmamux);
         self.configure_rx_stream(&dma, dmamux);
 
-        let (reader, writer) = self.state.split();
+        let mut angle_state = MA702_STATE.lock();
+        *angle_state = Some(BufferedState::new(AngleState {
+            raw_angle: 0,
+            angle: 0.,
+            acceleration: 0.,
+            velocity: 0.,
+        }));
+        let (reader, writer) = angle_state.as_mut().expect("asdf").split();
 
         *MA702_STATE_READER.lock() = Some(reader);
         *MA702_STATE_WRITER.lock() = Some(writer);
@@ -236,7 +234,6 @@ impl Ma702<Ready> {
         Ma702 {
             spi: self.spi,
             mode_state: Streaming {},
-            state: self.state,
         }
     }
 }
@@ -244,5 +241,32 @@ impl Ma702<Ready> {
 // TODO(blakely): Combine this and the state writer into a single lock.
 pub static DMA1: SpinLock<Option<device::DMA1>> = SpinLock::new(None);
 
+pub static MA702_STATE: SpinLock<Option<BufferedState<AngleState>>> = SpinLock::new(None);
 pub static MA702_STATE_READER: SpinLock<Option<StateReader<AngleState>>> = SpinLock::new(None);
 pub static MA702_STATE_WRITER: SpinLock<Option<StateWriter<AngleState>>> = SpinLock::new(None);
+
+// This is the interrupt that fires when the transfer from the `SPI[DR]` register transaction is complete.
+#[interrupt]
+fn DMA1_CH2() {
+    // Clear pending IRQ in NVIC.
+    clear_pending_irq(device::Interrupt::DMA1_CH2);
+
+    let mut state = acquire_hw(&MA702_STATE_WRITER).update();
+    let last = state.other();
+    let raw_angle = unsafe { ANGLE >> 4 };
+    let angle = raw_angle as f32 / 4096. * TWO_PI;
+
+    let velocity = (angle - last.angle) / FREQ_HZ;
+    let acceleration = (state.velocity - last.velocity) / FREQ_HZ;
+
+    *state = AngleState {
+        raw_angle,
+        angle,
+        velocity,
+        acceleration,
+    };
+
+    // Finally clear the IRQ flag in the DMA itself.
+    let dma = acquire_hw(&DMA1);
+    dma.ifcr.write(|w| w.gif2().set_bit());
+}
