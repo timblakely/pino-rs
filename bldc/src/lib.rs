@@ -10,3 +10,4 @@ pub mod driver;
 pub mod encoder;
 pub mod ic;
 pub mod memory;
+pub mod pi_controller;

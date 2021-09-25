@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::comms::messages::ExtendedFdcanFrame;
+use crate::{comms::messages::ExtendedFdcanFrame, pi_controller::PIController};
 
 // Control current for a single phase.
 
@@ -9,31 +9,6 @@ pub enum Phase {
     A,
     B,
     C,
-}
-
-struct PIController {
-    k: f32,
-    ki: f32,
-    ki_integral: f32,
-    v_clamp: f32,
-}
-
-impl PIController {
-    fn new(k: f32, ki: f32, v_clamp: f32) -> PIController {
-        PIController {
-            k,
-            ki,
-            ki_integral: 0.,
-            v_clamp,
-        }
-    }
-
-    fn update(&mut self, measurement: f32, target: f32) -> f32 {
-        let error = target - measurement;
-        let voltage = self.k * error + self.ki_integral;
-        self.ki_integral += self.k * self.ki * error;
-        voltage.clamp(-self.v_clamp, self.v_clamp)
-    }
 }
 
 pub struct PhaseCurrentCommand {
