@@ -356,7 +356,7 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
         }
     };
 
-    let turns = old_state.turns;
+    let mut turns = old_state.turns;
     let d_angle = match angle - last_angle {
         d_angle if d_angle > PI => {
             // Rolled over backwards.
