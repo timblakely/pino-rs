@@ -36,7 +36,7 @@ impl<'a, const N: usize> CordicProcessing<'a, N> {
 
 fn to_q1_31(theta: Angle) -> I1F31 {
     // Normalize to [-1,1)
-    let linearized = theta.normalized().in_radians() / PI;
+    let linearized = theta.normalized().in_radians() / PI - 1.;
     // Ensure that we're slightly less than 1 due to floating point rounding.
     I1F31::from_num(linearized.min(1. - f32::EPSILON))
 }
