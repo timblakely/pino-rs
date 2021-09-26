@@ -3,6 +3,7 @@ use core::marker::PhantomData;
 use core::f32::consts::PI;
 use fixed::types::I1F31;
 use stm32g4::stm32g474::{self as device};
+use third_party::ang::Angle;
 use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
 
 use crate::{block_until, block_while};
@@ -33,15 +34,11 @@ impl<'a, const N: usize> CordicProcessing<'a, N> {
     }
 }
 
-fn to_q1_31(theta: f32) -> I1F31 {
-    // Normalize to [-pi,pi] if necessary
-    let normalized_radians = match theta {
-        t if t >= PI => t - (((t + PI) / TWO_PI) as i32) as f32 * TWO_PI,
-        t if t < PI => t - (((t - PI) / TWO_PI) as i32) as f32 * TWO_PI,
-        t => t,
-    };
-    let normalized_linear = normalized_radians / PI;
-    I1F31::from_num(normalized_linear.clamp(-1., 1. - f32::EPSILON))
+fn to_q1_31(theta: Angle) -> I1F31 {
+    // Normalize to [-1,1)
+    let linearized = theta.normalized().in_radians() / PI;
+    // Ensure that we're slightly less than 1 due to floating point rounding.
+    I1F31::from_num(linearized.min(1. - f32::EPSILON))
 }
 
 impl Cordic {
@@ -63,7 +60,7 @@ impl Cordic {
         }
     }
 
-    pub fn cos_sin<'a>(&'a mut self, theta: f32) -> CordicProcessing<'a, 2> {
+    pub fn cos_sin<'a>(&'a mut self, theta: Angle) -> CordicProcessing<'a, 2> {
         let cordic = self
             .device
             .try_lock()

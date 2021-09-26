@@ -8,6 +8,8 @@ edition = "2021"
 
 
 [dependencies]
+# Temporary until https://github.com/burtonageo/ang/pull/1 is accepted/released
+ang = {path = "../../ang", default-features = false, features=[]}
 cortex-m = "0.7.2"
 scopeguard = {version="1.1.0", default-features=false}
 

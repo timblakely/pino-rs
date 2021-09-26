@@ -22,7 +22,7 @@ impl ControlLoop for FieldOrientedControl {
         let eangle = encoder.electrical_angle;
 
         let pending = cordic.cos_sin(encoder.electrical_angle);
-        let [sin, cos] = pending.get_result();
+        let [cos, sin] = pending.get_result();
 
         LoopState::Running
     }

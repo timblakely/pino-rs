@@ -5,11 +5,13 @@ use crate::block_while;
 use crate::util::buffered_state::{BufferedState, StateReader, StateWriter};
 use core::f32::consts::PI;
 use stm32g4::stm32g474::{self as device, interrupt};
+use third_party::ang::Angle;
 use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, enable_irq};
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
 use third_party::m4vga_rs::util::sync::acquire_hw;
 
 const FREQ_HZ: f32 = 1000.;
+
 const TWO_PI: f32 = 2. * PI;
 
 // Static location in memory to stream the raw angle measurements to. This has to be a) in a
@@ -19,22 +21,22 @@ pub static mut ANGLE: u16 = 0;
 #[derive(Clone, Copy)]
 pub struct AngleState {
     pub raw_angle: Option<u16>,
-    pub angle: f32, // Radians
-    pub velocity: f32,
-    pub acceleration: f32,
+    pub angle: Angle, // Radians
+    pub velocity: Angle,
+    pub acceleration: Angle,
     pub turns: u32,
-    pub angle_multiturn: f32,
+    pub angle_multiturn: Angle,
 }
 
 impl AngleState {
     pub fn new() -> AngleState {
         AngleState {
             raw_angle: None,
-            angle: 0.,
-            acceleration: 0.,
-            velocity: 0.,
+            angle: Angle::Radians(0.),
+            velocity: Angle::Radians(0.),
+            acceleration: Angle::Radians(0.),
             turns: 0,
-            angle_multiturn: 0.,
+            angle_multiturn: Angle::Radians(0.),
         }
     }
 }
@@ -333,13 +335,13 @@ pub static MA702_INTERRUPT_DATA: SpinLock<Option<(device::DMA1, StateWriter<Angl
 
 // Read the global angle value being streamed to by the DMA and return both the raw angle and the
 // angle calculated in radians.
-fn read_angle() -> (u16, f32) {
+fn read_angle() -> (u16, Angle) {
     // Safety: accessing global mutable values is inherently unsafe. Technically ANGLE doesn't need
     // to be mutable since no user code is mutating it, but it _is_ modified by the DMA controller,
     // so better safe than sorry. That said, read access to it should be atomic and take only a
     // single instruction.
     let raw_angle = unsafe { ANGLE >> 4 };
-    let angle = raw_angle as f32 / 4096. * TWO_PI;
+    let angle = Angle::Radians(raw_angle as f32 / 4096.) * TWO_PI;
     (raw_angle, angle)
 }
 
@@ -349,7 +351,7 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
     let (raw_angle, angle) = read_angle();
     // Special case when it's the very first reading to protect against first-sample velocity.
     let (last_angle, last_velocity) = match old_state.raw_angle {
-        None => (angle, 0f32),
+        None => (angle, Angle::Radians(0.)),
         Some(_) => {
             let other = old_state;
             (other.angle, other.velocity)
@@ -358,15 +360,15 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
 
     let mut turns = old_state.turns;
     let d_angle = match angle - last_angle {
-        d_angle if d_angle > PI => {
+        d_angle if d_angle.in_radians() > PI => {
             // Rolled over backwards.
             turns -= 1;
-            d_angle - TWO_PI
+            Angle::Radians(d_angle.in_radians() - TWO_PI)
         }
-        d_angle if d_angle < -PI => {
+        d_angle if d_angle.in_radians() < -PI => {
             // Rolled over forwards.
             turns += 1;
-            d_angle - TWO_PI
+            Angle::Radians(d_angle.in_radians() - TWO_PI)
         }
         d_angle => d_angle,
     };
@@ -380,7 +382,7 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
         velocity,
         acceleration,
         turns,
-        angle_multiturn: turns as f32 * TWO_PI + angle,
+        angle_multiturn: Angle::Radians(turns as f32 * TWO_PI) + angle,
     }
 }
 
