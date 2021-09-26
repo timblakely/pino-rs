@@ -1,4 +1,5 @@
 use crate::{
+    cordic::Cordic,
     current_sensing::{self, CurrentMeasurement, CurrentSensor},
     encoder::Encoder,
     util::interrupts::InterruptBLock,
@@ -7,6 +8,7 @@ use stm32g4::stm32g474 as device;
 extern crate alloc;
 use alloc::boxed::Box;
 
+pub mod field_oriented_control;
 pub mod idle_current_distribution;
 pub mod idle_current_sensor;
 pub mod interrupt;
@@ -22,6 +24,7 @@ pub struct ControlHardware {
     pub current_sensor: CurrentSensor<current_sensing::Ready>,
     pub tim1: device::TIM1,
     pub encoder: Encoder,
+    pub cordic: Cordic,
 }
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.

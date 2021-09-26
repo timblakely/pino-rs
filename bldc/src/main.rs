@@ -5,9 +5,9 @@
 use bldc::{
     comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Inductances, Messages},
     commutation::{
-        measure_inductance::MeasureInductance, measure_resistance::MeasureResistance,
-        phase_current::PhaseCurrent, CalibrateADC, Commutator, IdleCurrentDistribution,
-        IdleCurrentSensor,
+        field_oriented_control::FieldOrientedControl, measure_inductance::MeasureInductance,
+        measure_resistance::MeasureResistance, phase_current::PhaseCurrent, CalibrateADC,
+        Commutator, IdleCurrentDistribution, IdleCurrentSensor,
     },
     driver,
 };
@@ -22,6 +22,8 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 fn main() -> ! {
     // Acquire the driver.
     let driver = driver::take_hardware().configure_peripherals().calibrate();
+
+    Commutator::set(FieldOrientedControl::new(1., 0.));
 
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
