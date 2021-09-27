@@ -19,7 +19,6 @@ use crate::{block_while, ic::drv8323rs, ic::ma702};
 extern crate alloc;
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
-use fixed::types::I1F31;
 use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};

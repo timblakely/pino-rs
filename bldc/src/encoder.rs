@@ -25,5 +25,6 @@ impl Encoder {
         self.angle_state = angle_state;
         // TODO(blakely): This may be less accurate than using the conversion from raw_angle.
         self.electrical_angle = (angle_state.angle * self.pole_pairs as f32).normalized();
+        self.electrical_velocity = (angle_state.velocity * self.pole_pairs as f32).normalized();
     }
 }

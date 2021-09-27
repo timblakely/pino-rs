@@ -330,6 +330,9 @@ impl CurrentSensor<Configuring> {
         // Wait for it to complete
         block_until!(adc4.cr.read().adcal().bit_is_clear());
 
+        // Apparently ADC4 is kinda sleepy and takes a bit to exit calibration mode?
+        blocking_sleep_us(1);
+
         // Check that we're ready, enable, and wait for ready state. Initial adrdy.set_bit is to
         // ensure it's cleared.
         adc4.isr.modify(|_, w| w.adrdy().set_bit());

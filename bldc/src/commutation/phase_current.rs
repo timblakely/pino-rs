@@ -40,7 +40,7 @@ impl ExtendedFdcanFrame for PhaseCurrentCommand {
     }
 }
 
-trait BitwiseAbs {
+pub trait BitwiseAbs {
     fn abs(&self) -> f32;
 }
 
