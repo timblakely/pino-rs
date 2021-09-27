@@ -11,10 +11,11 @@ const FRAC_SQRT_3_2: f32 = SQRT_3 / 2.;
 const DT: f32 = 1. / 40_000.;
 const MIN_PWM_VALUE: f32 = 0.;
 const MAX_PWM_VALUE: f32 = 2125.;
+const PWM_INVERT: bool = true;
 
-struct DQCurrents {
-    q: f32,
-    d: f32,
+pub struct DQCurrents {
+    pub q: f32,
+    pub d: f32,
 }
 
 struct DQVoltages {
@@ -34,22 +35,20 @@ struct PhaseDuty {
 }
 
 pub struct FieldOrientedControl {
-    q_current: f32,
+    currents: DQCurrents,
     q_controller: PIController,
-    d_current: f32,
     d_controller: PIController,
 
     loops: u32,
 }
 
 impl FieldOrientedControl {
-    pub fn new(q_current: f32, d_current: f32) -> FieldOrientedControl {
+    pub fn new(currents: DQCurrents) -> FieldOrientedControl {
         // TODO(blakely): Don't hard-code these; instead pull from either global config,
         // calibration, or FDCAN command.
         FieldOrientedControl {
-            q_current,
+            currents,
             q_controller: PIController::new(1.421142407046769, 0.055681818, 24.),
-            d_current,
             d_controller: PIController::new(1.421142407046769, 0.055681818, 24.),
             loops: 0,
         }
@@ -75,11 +74,11 @@ fn forward_park_clark(phase_currents: PhaseCurrents, cos: f32, sin: f32) -> DQCu
     DQCurrents { d, q }
 }
 
-fn inverse_park_clark(dq_currents: DQVoltages, cos: f32, sin: f32) -> PhaseVoltages {
+fn inverse_park_clark(dq_voltages: DQVoltages, cos: f32, sin: f32) -> PhaseVoltages {
     let half_cos = cos / 2.;
     let half_sin = sin / 2.;
 
-    let DQVoltages { d, q } = dq_currents;
+    let DQVoltages { d, q } = dq_voltages;
 
     let a = cos * d - sin * q;
     let b = (FRAC_SQRT_3_2 * sin - half_cos) * d - (-FRAC_SQRT_3_2 * cos - half_sin) * q;
@@ -132,8 +131,8 @@ impl ControlLoop for FieldOrientedControl {
             encoder.electrical_angle + 1.5f32 * DT * encoder.electrical_velocity;
         let pending_cos_sin = cordic.cos_sin(new_electrical_theta);
         // In the meantime, update the controllers for d and q axes
-        let new_q_voltage = self.q_controller.update(dq_currents.q, self.q_current);
-        let new_d_voltage = self.d_controller.update(dq_currents.d, self.d_current);
+        let new_q_voltage = self.q_controller.update(dq_currents.q, self.currents.q);
+        let new_d_voltage = self.d_controller.update(dq_currents.d, self.currents.d);
         // Get the result of the new theta.
         let [cos, sin] = pending_cos_sin.get_result();
         let new_voltages = inverse_park_clark(
@@ -160,19 +159,26 @@ impl ControlLoop for FieldOrientedControl {
         // Calculate the pwm signals
         // let pwms = space_vector_modulation(v_bus, new_voltages);
 
-        let pwms = PhaseDuty {
-            a: new_voltages.a / v_bus * 0.5 + 0.5,
-            b: new_voltages.b / v_bus * 0.5 + 0.5,
-            c: new_voltages.c / v_bus * 0.5 + 0.5,
+        let pwms = match PWM_INVERT {
+            false => PhaseDuty {
+                a: new_voltages.a / v_bus * 0.5 + 0.5,
+                b: new_voltages.b / v_bus * 0.5 + 0.5,
+                c: new_voltages.c / v_bus * 0.5 + 0.5,
+            },
+            true => PhaseDuty {
+                a: -new_voltages.a / v_bus * 0.5 + 0.5,
+                b: -new_voltages.b / v_bus * 0.5 + 0.5,
+                c: -new_voltages.c / v_bus * 0.5 + 0.5,
+            },
         };
 
         // Set PWM values
-        // tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
-        // tim1.ccr2.write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
-        // tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
         tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
-        tim1.ccr2.write(|w| w.ccr2().bits((pwms.c * 2125.) as u16));
-        tim1.ccr3.write(|w| w.ccr3().bits((pwms.b * 2125.) as u16));
+        tim1.ccr2.write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
+        tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
+        // tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
+        // tim1.ccr2.write(|w| w.ccr2().bits((pwms.c * 2125.) as u16));
+        // tim1.ccr3.write(|w| w.ccr3().bits((pwms.b * 2125.) as u16));
         LoopState::Running
     }
 }
