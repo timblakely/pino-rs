@@ -20,6 +20,10 @@ impl Encoder {
         }
     }
 
+    pub fn angle_state(&self) -> &AngleState {
+        &self.angle_state
+    }
+
     pub fn update(&mut self, delta_t: f32) {
         let angle_state = self.ma702.update(delta_t);
         self.angle_state = angle_state;

@@ -15,6 +15,7 @@ pub mod interrupt;
 pub mod measure_inductance;
 pub mod measure_resistance;
 pub mod phase_current;
+pub mod read_encoder;
 
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;

@@ -6,8 +6,9 @@ use bldc::{
     comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Inductances, Messages},
     commutation::{
         field_oriented_control::FieldOrientedControl, measure_inductance::MeasureInductance,
-        measure_resistance::MeasureResistance, phase_current::PhaseCurrent, CalibrateADC,
-        Commutator, IdleCurrentDistribution, IdleCurrentSensor,
+        measure_resistance::MeasureResistance, phase_current::PhaseCurrent,
+        read_encoder::ReadEncoder, CalibrateADC, Commutator, IdleCurrentDistribution,
+        IdleCurrentSensor,
     },
     driver,
 };
@@ -23,7 +24,7 @@ fn main() -> ! {
     // Acquire the driver.
     let driver = driver::take_hardware().configure_peripherals().calibrate();
 
-    Commutator::set(FieldOrientedControl::new(0.3, 0.));
+    // Commutator::set(FieldOrientedControl::new(0.3, 0.));
 
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
@@ -79,6 +80,9 @@ fn main() -> ! {
                 m.k,
                 m.ki,
             )),
+            Some(Messages::ReadEncoder(_)) => Commutator::set(ReadEncoder::new(|results| {
+                fdcan.send_message(results.pack())
+            })),
             _ => (),
         };
     });

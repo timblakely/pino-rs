@@ -1,4 +1,7 @@
-use crate::{commutation::phase_current::PhaseCurrentCommand, current_sensing::PhaseCurrents};
+use crate::{
+    commutation::{phase_current::PhaseCurrentCommand, read_encoder::ReadEncoderMsg},
+    current_sensing::PhaseCurrents,
+};
 
 use super::fdcan::FdcanMessage;
 
@@ -57,6 +60,7 @@ pub enum Messages {
     MeasureResistance(MeasureResistance),
     EStop(EStop),
     PhaseCurrentCommand(PhaseCurrentCommand),
+    ReadEncoder(ReadEncoderMsg),
 }
 
 // TODO(blakely): split into received/sent, since some of the messages only make sense for incoming
@@ -216,6 +220,7 @@ impl Messages {
             0x12 => Some(Self::PhaseCurrentCommand(PhaseCurrentCommand::unpack(
                 message,
             ))),
+            0x13 => Some(Self::ReadEncoder(ReadEncoderMsg::unpack(message))),
             _ => None,
         }
     }
