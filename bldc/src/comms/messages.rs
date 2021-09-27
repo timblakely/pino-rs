@@ -1,4 +1,4 @@
-use crate::{commutation::phase_current::PhaseCurrentCommand, current_sensing::CurrentMeasurement};
+use crate::{commutation::phase_current::PhaseCurrentCommand, current_sensing::PhaseCurrents};
 
 use super::fdcan::FdcanMessage;
 
@@ -172,7 +172,7 @@ impl ExtendedFdcanFrame for EStop {
     }
 }
 
-impl ExtendedFdcanFrame for CurrentMeasurement {
+impl ExtendedFdcanFrame for PhaseCurrents {
     fn unpack(_: &FdcanMessage) -> Self {
         panic!("Unpack not supported")
     }

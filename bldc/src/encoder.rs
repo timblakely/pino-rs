@@ -1,8 +1,5 @@
 use crate::ic::ma702::{AngleState, Ma702, StreamingPolling};
-use core::f32::consts::PI;
 use third_party::ang::Angle;
-
-const TWO_PI: f32 = 2. * PI;
 
 pub struct Encoder {
     ma702: Ma702<StreamingPolling>,
@@ -27,6 +24,6 @@ impl Encoder {
         let angle_state = self.ma702.update(delta_t);
         self.angle_state = angle_state;
         // TODO(blakely): This may be less accurate than using the conversion from raw_angle.
-        self.electrical_angle = (angle_state.angle * 12.).normalized();
+        self.electrical_angle = (angle_state.angle * self.pole_pairs as f32).normalized();
     }
 }

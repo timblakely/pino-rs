@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::current_sensing::CurrentMeasurement;
+use crate::current_sensing::PhaseCurrents;
 use alloc::boxed::Box;
 
 // During commutation, no PWM is performed. The current is sampled once at each loop for a given
@@ -9,19 +9,19 @@ use alloc::boxed::Box;
 pub struct IdleCurrentSensor<'a> {
     total_counts: u32,
     loop_count: u32,
-    sample: CurrentMeasurement,
-    callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
+    sample: PhaseCurrents,
+    callback: Box<dyn for<'r> FnMut(&'r PhaseCurrents) + 'a + Send>,
 }
 
 impl<'a> IdleCurrentSensor<'a> {
     pub fn new(
         duration: f32,
-        callback: impl for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send,
+        callback: impl for<'r> FnMut(&'r PhaseCurrents) + 'a + Send,
     ) -> IdleCurrentSensor<'a> {
         IdleCurrentSensor {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
-            sample: CurrentMeasurement::new(),
+            sample: PhaseCurrents::new(),
             callback: Box::new(callback),
         }
     }

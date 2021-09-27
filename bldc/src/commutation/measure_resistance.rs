@@ -3,7 +3,7 @@ extern crate alloc;
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
     comms::{fdcan::FdcanMessage, messages::ExtendedFdcanFrame},
-    current_sensing::CurrentMeasurement,
+    current_sensing::PhaseCurrents,
 };
 use alloc::boxed::Box;
 
@@ -31,7 +31,7 @@ pub struct MeasureResistance<'a> {
     phase: Phase,
     pwm_duty: f32,
     v_bus: f32,
-    current: CurrentMeasurement,
+    current: PhaseCurrents,
 
     callback: Box<dyn for<'r> FnMut(&'r Resistance) + 'a + Send>,
 }
@@ -50,7 +50,7 @@ impl<'a> MeasureResistance<'a> {
             phase,
             pwm_duty: 0.,
             v_bus: 0.,
-            current: CurrentMeasurement::new(),
+            current: PhaseCurrents::new(),
             callback: Box::new(callback),
         }
     }

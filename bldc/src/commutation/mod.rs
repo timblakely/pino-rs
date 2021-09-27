@@ -1,6 +1,6 @@
 use crate::{
     cordic::Cordic,
-    current_sensing::{self, CurrentMeasurement, CurrentSensor},
+    current_sensing::{self, CurrentSensor, PhaseCurrents},
     encoder::Encoder,
     util::interrupts::InterruptBLock,
 };
@@ -62,19 +62,19 @@ pub trait ControlLoop: Send {
 pub struct CalibrateADC<'a> {
     total_counts: u32,
     loop_count: u32,
-    sample: CurrentMeasurement,
-    callback: Box<dyn for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send>,
+    sample: PhaseCurrents,
+    callback: Box<dyn for<'r> FnMut(&'r PhaseCurrents) + 'a + Send>,
 }
 
 impl<'a> CalibrateADC<'a> {
     pub fn new(
         duration: f32,
-        callback: impl for<'r> FnMut(&'r CurrentMeasurement) + 'a + Send,
+        callback: impl for<'r> FnMut(&'r PhaseCurrents) + 'a + Send,
     ) -> CalibrateADC<'a> {
         CalibrateADC {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
-            sample: CurrentMeasurement::new(),
+            sample: PhaseCurrents::new(),
             callback: Box::new(callback),
         }
     }

@@ -486,7 +486,7 @@ impl CurrentSensor<Ready> {
 }
 
 // Sample ADCs and offset current values by calibrated offsets.
-fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasurement {
+fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> PhaseCurrents {
     let mut measurement = sample_raw(sensor);
     measurement.phase_a -= sensor.phase_a_offset;
     measurement.phase_b -= sensor.phase_b_offset;
@@ -495,7 +495,7 @@ fn sample<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasuremen
 }
 
 // Sample ADCs values directly, not applying any offsets.
-fn sample_raw<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasurement {
+fn sample_raw<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> PhaseCurrents {
     let v_refint = sensor.v_refint.dr.read().bits() as u16;
     let sense_v_ref_over_2: f32 = sensor.sense_v_ref / 2.0;
 
@@ -510,22 +510,22 @@ fn sample_raw<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> CurrentMeasur
     let phase_b = calc_phase_current(phase_b);
     let phase_c = calc_phase_current(phase_c);
 
-    CurrentMeasurement {
+    PhaseCurrents {
         phase_a,
         phase_b,
         phase_c,
     }
 }
 
-pub struct CurrentMeasurement {
+pub struct PhaseCurrents {
     pub phase_a: f32,
     pub phase_b: f32,
     pub phase_c: f32,
 }
 
-impl CurrentMeasurement {
-    pub fn new() -> CurrentMeasurement {
-        CurrentMeasurement {
+impl PhaseCurrents {
+    pub fn new() -> PhaseCurrents {
+        PhaseCurrents {
             phase_a: 0.,
             phase_b: 0.,
             phase_c: 0.,
@@ -535,12 +535,12 @@ impl CurrentMeasurement {
 
 impl CurrentSensor<Ready> {
     // Sample ADC values and correct for offset.
-    pub fn sample(&self) -> CurrentMeasurement {
+    pub fn sample(&self) -> PhaseCurrents {
         sample(self)
     }
 
     // Sample raw ADC values (no offset correction).
-    pub fn sample_raw(&self) -> CurrentMeasurement {
+    pub fn sample_raw(&self) -> PhaseCurrents {
         sample_raw(self)
     }
 
@@ -556,11 +556,11 @@ impl CurrentSensor<Ready> {
     }
 }
 
-impl ops::Add for CurrentMeasurement {
-    type Output = CurrentMeasurement;
+impl ops::Add for PhaseCurrents {
+    type Output = PhaseCurrents;
 
-    fn add(self, rhs: CurrentMeasurement) -> Self::Output {
-        CurrentMeasurement {
+    fn add(self, rhs: PhaseCurrents) -> Self::Output {
+        PhaseCurrents {
             phase_a: self.phase_a + rhs.phase_a,
             phase_b: self.phase_b + rhs.phase_b,
             phase_c: self.phase_c + rhs.phase_c,
@@ -568,7 +568,7 @@ impl ops::Add for CurrentMeasurement {
     }
 }
 
-impl ops::AddAssign for CurrentMeasurement {
+impl ops::AddAssign for PhaseCurrents {
     fn add_assign(&mut self, rhs: Self) {
         self.phase_a += rhs.phase_a;
         self.phase_b += rhs.phase_b;
@@ -576,19 +576,19 @@ impl ops::AddAssign for CurrentMeasurement {
     }
 }
 
-impl<'a, 'b> ops::AddAssign<&'b CurrentMeasurement> for &'a mut CurrentMeasurement {
-    fn add_assign(&mut self, rhs: &'b CurrentMeasurement) {
+impl<'a, 'b> ops::AddAssign<&'b PhaseCurrents> for &'a mut PhaseCurrents {
+    fn add_assign(&mut self, rhs: &'b PhaseCurrents) {
         self.phase_a += rhs.phase_a;
         self.phase_b += rhs.phase_b;
         self.phase_c += rhs.phase_c;
     }
 }
 
-impl ops::Sub for CurrentMeasurement {
-    type Output = CurrentMeasurement;
+impl ops::Sub for PhaseCurrents {
+    type Output = PhaseCurrents;
 
-    fn sub(self, rhs: CurrentMeasurement) -> Self::Output {
-        CurrentMeasurement {
+    fn sub(self, rhs: PhaseCurrents) -> Self::Output {
+        PhaseCurrents {
             phase_a: self.phase_a - rhs.phase_a,
             phase_b: self.phase_b - rhs.phase_b,
             phase_c: self.phase_c - rhs.phase_c,
@@ -596,11 +596,11 @@ impl ops::Sub for CurrentMeasurement {
     }
 }
 
-impl<'a, 'b> ops::Sub<&'b CurrentMeasurement> for &'a CurrentMeasurement {
-    type Output = CurrentMeasurement;
+impl<'a, 'b> ops::Sub<&'b PhaseCurrents> for &'a PhaseCurrents {
+    type Output = PhaseCurrents;
 
-    fn sub(self, rhs: &'b CurrentMeasurement) -> Self::Output {
-        CurrentMeasurement {
+    fn sub(self, rhs: &'b PhaseCurrents) -> Self::Output {
+        PhaseCurrents {
             phase_a: self.phase_a - rhs.phase_a,
             phase_b: self.phase_b - rhs.phase_b,
             phase_c: self.phase_c - rhs.phase_c,
@@ -608,7 +608,7 @@ impl<'a, 'b> ops::Sub<&'b CurrentMeasurement> for &'a CurrentMeasurement {
     }
 }
 
-impl ops::SubAssign for CurrentMeasurement {
+impl ops::SubAssign for PhaseCurrents {
     fn sub_assign(&mut self, rhs: Self) {
         self.phase_a -= rhs.phase_a;
         self.phase_b -= rhs.phase_b;
@@ -616,7 +616,7 @@ impl ops::SubAssign for CurrentMeasurement {
     }
 }
 
-impl ops::DivAssign<u32> for CurrentMeasurement {
+impl ops::DivAssign<u32> for PhaseCurrents {
     fn div_assign(&mut self, rhs: u32) {
         self.phase_a /= rhs as f32;
         self.phase_b /= rhs as f32;
@@ -624,11 +624,11 @@ impl ops::DivAssign<u32> for CurrentMeasurement {
     }
 }
 
-impl ops::Mul<f32> for CurrentMeasurement {
-    type Output = CurrentMeasurement;
+impl ops::Mul<f32> for PhaseCurrents {
+    type Output = PhaseCurrents;
 
     fn mul(self, rhs: f32) -> Self::Output {
-        CurrentMeasurement {
+        PhaseCurrents {
             phase_a: self.phase_a * rhs,
             phase_b: self.phase_b * rhs,
             phase_c: self.phase_c * rhs,
@@ -636,11 +636,11 @@ impl ops::Mul<f32> for CurrentMeasurement {
     }
 }
 
-impl ops::Mul<f32> for &CurrentMeasurement {
-    type Output = CurrentMeasurement;
+impl ops::Mul<f32> for &PhaseCurrents {
+    type Output = PhaseCurrents;
 
     fn mul(self, rhs: f32) -> Self::Output {
-        CurrentMeasurement {
+        PhaseCurrents {
             phase_a: self.phase_a * rhs,
             phase_b: self.phase_b * rhs,
             phase_c: self.phase_c * rhs,

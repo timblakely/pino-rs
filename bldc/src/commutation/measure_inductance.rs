@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::current_sensing::CurrentMeasurement;
+use crate::current_sensing::PhaseCurrents;
 use alloc::boxed::Box;
 
 // Drive a zero-centered square wave through the phases, which should result in a triangle wave of
@@ -27,12 +27,12 @@ pub struct MeasureInductance<'a> {
     loop_count: u32,
     direction: Direction,
 
-    sample: CurrentMeasurement,
+    sample: PhaseCurrents,
     v_bus: f32,
     switch_count: u32,
     loops_per_switch: f32,
     remainder: f32,
-    last_sample: Option<CurrentMeasurement>,
+    last_sample: Option<PhaseCurrents>,
     pwm_duty: f32,
     pwm_ccr: u16,
     sample_pwm_ccr: u16,
@@ -62,7 +62,7 @@ impl<'a> MeasureInductance<'a> {
             loop_count: 0,
             direction: Direction::Up,
 
-            sample: CurrentMeasurement::new(),
+            sample: PhaseCurrents::new(),
             v_bus: 0.,
             loops_per_switch: (40_000 as f32) / square_wave_freq as f32,
             switch_count: 0,

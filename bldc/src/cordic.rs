@@ -1,14 +1,10 @@
-use core::marker::PhantomData;
-
+use crate::{block_until, block_while};
 use core::f32::consts::PI;
+use core::marker::PhantomData;
 use fixed::types::I1F31;
 use stm32g4::stm32g474::{self as device};
 use third_party::ang::Angle;
 use third_party::m4vga_rs::util::spin_lock::{SpinLock, SpinLockGuard};
-
-use crate::{block_until, block_while};
-
-const TWO_PI: f32 = 2. * PI;
 
 // Functional API around CORDIC hardware.
 
