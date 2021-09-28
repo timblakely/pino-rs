@@ -1,8 +1,5 @@
-use super::{phase_current::BitwiseAbs, ControlHardware, ControlLoop, LoopState};
-use crate::{
-    comms::messages::ExtendedFdcanFrame, current_sensing::PhaseCurrents,
-    pi_controller::PIController,
-};
+use super::{ControlHardware, ControlLoop, LoopState};
+use crate::{current_sensing::PhaseCurrents, pi_controller::PIController};
 
 // Field-oriented control. Very basic Park/Clark forward and inverse. Currently no SVM is performed,
 // and only a single i_q/i_d value is accepted S

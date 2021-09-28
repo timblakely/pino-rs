@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::{comms::messages::ExtendedFdcanFrame, pi_controller::PIController};
+use crate::{comms::messages::IncomingFdcanFrame, pi_controller::PIController};
 
 // Control current for a single phase.
 
@@ -19,7 +19,7 @@ pub struct PhaseCurrentCommand {
     pub phase: Phase,
 }
 
-impl ExtendedFdcanFrame for PhaseCurrentCommand {
+impl IncomingFdcanFrame for PhaseCurrentCommand {
     fn unpack(message: &crate::comms::fdcan::FdcanMessage) -> Self {
         let buffer = message.data;
         PhaseCurrentCommand {
@@ -33,10 +33,6 @@ impl ExtendedFdcanFrame for PhaseCurrentCommand {
                 _ => Phase::C,
             },
         }
-    }
-
-    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
-        panic!("Pack not supported")
     }
 }
 

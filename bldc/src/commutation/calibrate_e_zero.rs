@@ -2,7 +2,10 @@ extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::{fdcan::FdcanMessage, messages::ExtendedFdcanFrame},
+    comms::{
+        fdcan::FdcanMessage,
+        messages::{IncomingFdcanFrame, OutgoingFdcanFrame},
+    },
     current_sensing::PhaseCurrents,
     led::Led,
     pi_controller::PIController,
@@ -232,10 +235,7 @@ pub struct CalibrateEZeroMsg {
     pub currents: DQCurrents,
 }
 
-impl ExtendedFdcanFrame for CalibrateEZeroMsg {
-    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
-        panic!("Pack not supported")
-    }
+impl IncomingFdcanFrame for CalibrateEZeroMsg {
     fn unpack(message: &crate::comms::fdcan::FdcanMessage) -> Self {
         let buffer = message.data;
         CalibrateEZeroMsg {
@@ -255,11 +255,7 @@ pub struct EZeroMsg {
     angle_raw: u32,
 }
 
-impl<'a> ExtendedFdcanFrame for EZeroMsg {
-    fn unpack(_: &FdcanMessage) -> Self {
-        panic!("Unack not supported");
-    }
-
+impl<'a> OutgoingFdcanFrame for EZeroMsg {
     fn pack(&self) -> FdcanMessage {
         FdcanMessage::new(
             0x15,

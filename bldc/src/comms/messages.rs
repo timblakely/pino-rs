@@ -67,31 +67,27 @@ pub enum Messages {
     CalibrateEZero(CalibrateEZeroMsg),
 }
 
-// TODO(blakely): split into received/sent, since some of the messages only make sense for incoming
-// or outgoing messages.
-pub trait ExtendedFdcanFrame {
+pub trait IncomingFdcanFrame {
     // Unpack the message from a buffer.
     fn unpack(message: &FdcanMessage) -> Self;
+}
 
+pub trait OutgoingFdcanFrame {
     // Pack the message into a buffer of up to 64 bytes, returning the number of bytes that were
     // packed.
     fn pack(&self) -> FdcanMessage;
 }
 
-impl ExtendedFdcanFrame for IdleCurrentSense {
+impl IncomingFdcanFrame for IdleCurrentSense {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
         IdleCurrentSense {
             duration: f32::from_bits(buffer[0]),
         }
     }
-
-    fn pack(&self) -> FdcanMessage {
-        panic!("Pack not supported");
-    }
 }
 
-impl ExtendedFdcanFrame for IdleCurrentDistribution {
+impl IncomingFdcanFrame for IdleCurrentDistribution {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
         IdleCurrentDistribution {
@@ -101,23 +97,15 @@ impl ExtendedFdcanFrame for IdleCurrentDistribution {
             phase: buffer[3] as u8 & 0xFF,
         }
     }
-
-    fn pack(&self) -> FdcanMessage {
-        panic!("Pack not supported");
-    }
 }
 
-impl<'a> ExtendedFdcanFrame for CurrentDistribution<'a> {
-    fn unpack(_: &FdcanMessage) -> Self {
-        panic!("Unack not supported");
-    }
-
+impl<'a> OutgoingFdcanFrame for CurrentDistribution<'a> {
     fn pack(&self) -> FdcanMessage {
         FdcanMessage::new(0xF, self.bins)
     }
 }
 
-impl ExtendedFdcanFrame for MeasureInductance {
+impl IncomingFdcanFrame for MeasureInductance {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
         MeasureInductance {
@@ -127,17 +115,9 @@ impl ExtendedFdcanFrame for MeasureInductance {
             sample_pwm_percent: f32::from_bits(buffer[3]),
         }
     }
-
-    fn pack(&self) -> FdcanMessage {
-        panic!("Pack not supported");
-    }
 }
 
-impl<'a> ExtendedFdcanFrame for Inductances<'a> {
-    fn unpack(_: &FdcanMessage) -> Self {
-        panic!("Unack not supported");
-    }
-
+impl<'a> OutgoingFdcanFrame for Inductances<'a> {
     fn pack(&self) -> FdcanMessage {
         FdcanMessage::new(
             0x11,
@@ -150,7 +130,7 @@ impl<'a> ExtendedFdcanFrame for Inductances<'a> {
     }
 }
 
-impl ExtendedFdcanFrame for MeasureResistance {
+impl IncomingFdcanFrame for MeasureResistance {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
         MeasureResistance {
@@ -164,27 +144,15 @@ impl ExtendedFdcanFrame for MeasureResistance {
             },
         }
     }
-
-    fn pack(&self) -> FdcanMessage {
-        panic!("Pack not supported");
-    }
 }
 
-impl ExtendedFdcanFrame for EStop {
+impl IncomingFdcanFrame for EStop {
     fn unpack(_: &FdcanMessage) -> Self {
         EStop {}
     }
-
-    fn pack(&self) -> FdcanMessage {
-        panic!("Pack not supported");
-    }
 }
 
-impl ExtendedFdcanFrame for PhaseCurrents {
-    fn unpack(_: &FdcanMessage) -> Self {
-        panic!("Unpack not supported")
-    }
-
+impl OutgoingFdcanFrame for PhaseCurrents {
     fn pack(&self) -> FdcanMessage {
         FdcanMessage::new(
             0xD,
@@ -197,16 +165,12 @@ impl ExtendedFdcanFrame for PhaseCurrents {
     }
 }
 
-impl ExtendedFdcanFrame for CalibrateADC {
+impl IncomingFdcanFrame for CalibrateADC {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
         CalibrateADC {
             duration: f32::from_bits(buffer[0]),
         }
-    }
-
-    fn pack(&self) -> FdcanMessage {
-        panic!("Pack not supported");
     }
 }
 

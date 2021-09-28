@@ -2,7 +2,7 @@ extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::{fdcan::FdcanMessage, messages::ExtendedFdcanFrame},
+    comms::{fdcan::FdcanMessage, messages::OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
 };
 use alloc::boxed::Box;
@@ -60,11 +60,7 @@ pub struct Resistance {
     resistance: f32,
 }
 
-impl ExtendedFdcanFrame for Resistance {
-    fn unpack(_: &crate::comms::fdcan::FdcanMessage) -> Self {
-        panic!("Unpack not supported")
-    }
-
+impl OutgoingFdcanFrame for Resistance {
     fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
         FdcanMessage::new(0x12, &[self.resistance.to_bits()])
     }

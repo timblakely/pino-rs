@@ -3,7 +3,7 @@
 #![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::messages::{CurrentDistribution, ExtendedFdcanFrame, Inductances, Messages},
+    comms::messages::{CurrentDistribution, Inductances, Messages, OutgoingFdcanFrame},
     commutation::{
         calibrate_e_zero::CalibrateEZero,
         field_oriented_control::{DQCurrents, FieldOrientedControl},

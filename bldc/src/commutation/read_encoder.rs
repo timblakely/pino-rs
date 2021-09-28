@@ -1,6 +1,9 @@
 extern crate alloc;
 
-use crate::comms::{fdcan::FdcanMessage, messages::ExtendedFdcanFrame};
+use crate::comms::{
+    fdcan::FdcanMessage,
+    messages::{IncomingFdcanFrame, OutgoingFdcanFrame},
+};
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use alloc::boxed::Box;
@@ -68,20 +71,13 @@ impl<'a> ControlLoop for ReadEncoder<'a> {
 
 pub struct ReadEncoderMsg {}
 
-impl ExtendedFdcanFrame for ReadEncoderMsg {
-    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
-        panic!("Pack not supported")
-    }
+impl IncomingFdcanFrame for ReadEncoderMsg {
     fn unpack(_: &crate::comms::fdcan::FdcanMessage) -> Self {
         ReadEncoderMsg {}
     }
 }
 
-impl ExtendedFdcanFrame for EncoderResults {
-    fn unpack(_: &crate::comms::fdcan::FdcanMessage) -> Self {
-        panic!("Unpack not supported")
-    }
-
+impl OutgoingFdcanFrame for EncoderResults {
     fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
         FdcanMessage::new(
             0x13,
