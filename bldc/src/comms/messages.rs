@@ -1,5 +1,8 @@
 use crate::{
-    commutation::{phase_current::PhaseCurrentCommand, read_encoder::ReadEncoderMsg},
+    commutation::{
+        calibrate_e_zero::CalibrateEZeroMsg, phase_current::PhaseCurrentCommand,
+        read_encoder::ReadEncoderMsg,
+    },
     current_sensing::PhaseCurrents,
 };
 
@@ -61,6 +64,7 @@ pub enum Messages {
     EStop(EStop),
     PhaseCurrentCommand(PhaseCurrentCommand),
     ReadEncoder(ReadEncoderMsg),
+    CalibrateEZero(CalibrateEZeroMsg),
 }
 
 // TODO(blakely): split into received/sent, since some of the messages only make sense for incoming
@@ -221,6 +225,7 @@ impl Messages {
                 message,
             ))),
             0x13 => Some(Self::ReadEncoder(ReadEncoderMsg::unpack(message))),
+            0x14 => Some(Self::CalibrateEZero(CalibrateEZeroMsg::unpack(message))),
             _ => None,
         }
     }

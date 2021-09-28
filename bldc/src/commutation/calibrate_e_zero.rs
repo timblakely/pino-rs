@@ -1,8 +1,12 @@
-use super::{phase_current::BitwiseAbs, ControlHardware, ControlLoop, LoopState};
+extern crate alloc;
+
+use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::messages::ExtendedFdcanFrame, current_sensing::PhaseCurrents,
+    comms::{fdcan::FdcanMessage, messages::ExtendedFdcanFrame},
+    current_sensing::PhaseCurrents,
     pi_controller::PIController,
 };
+use alloc::boxed::Box;
 
 // Field-oriented control. Very basic Park/Clark forward and inverse. Currently no SVM is performed,
 // and only a single i_q/i_d value is accepted S
@@ -37,23 +41,41 @@ struct PhaseDuty {
     c: f32,
 }
 
-pub struct FieldOrientedControl {
+pub struct CalibrateEZero<'a> {
     currents: DQCurrents,
     q_controller: PIController,
     d_controller: PIController,
 
-    loops: u32,
+    total_counts: u32,
+    loop_count: u32,
+
+    record: EZeroMsg,
+
+    callback: Box<dyn for<'r> FnMut(&'r EZeroMsg) + 'a + Send>,
 }
 
-impl FieldOrientedControl {
-    pub fn new(currents: DQCurrents) -> FieldOrientedControl {
+impl<'a> CalibrateEZero<'a> {
+    pub fn new(
+        duration: f32,
+        currents: DQCurrents,
+        callback: impl for<'r> FnMut(&'r EZeroMsg) + 'a + Send,
+    ) -> CalibrateEZero<'a> {
         // TODO(blakely): Don't hard-code these; instead pull from either global config,
         // calibration, or FDCAN command.
-        FieldOrientedControl {
+        CalibrateEZero {
             currents,
             q_controller: PIController::new(1.421142407046769, 0.055681818, 24.),
             d_controller: PIController::new(1.421142407046769, 0.055681818, 24.),
-            loops: 0,
+            total_counts: (40_000 as f32 * duration) as u32,
+            loop_count: 0,
+            callback: Box::new(callback),
+
+            record: EZeroMsg {
+                angle: 0.,
+                angle_raw: 0,
+                e_angle: 0.,
+                e_raw: 0.,
+            },
         }
     }
 }
@@ -112,9 +134,8 @@ fn space_vector_modulation(v_ref: f32, phase_voltages: PhaseVoltages) -> PhaseDu
     PhaseDuty { a, b, c }
 }
 
-impl ControlLoop for FieldOrientedControl {
+impl<'a> ControlLoop for CalibrateEZero<'a> {
     fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
-        self.loops += 1;
         let encoder = &hardware.encoder;
         let cordic = &mut hardware.cordic;
         // Kick off CORDIC conversion
@@ -168,6 +189,83 @@ impl ControlLoop for FieldOrientedControl {
         tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
         tim1.ccr2.write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
         tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
-        LoopState::Running
+
+        let angle_raw = match encoder.angle_state().raw_angle {
+            Some(x) => x as u32,
+            None => 0,
+        };
+
+        self.record = EZeroMsg {
+            angle: encoder.angle_state().angle.in_radians(),
+            angle_raw,
+            e_angle: encoder.electrical_angle.in_radians(),
+            e_raw: angle_raw as f32 / 21.,
+        };
+
+        self.loop_count += 1;
+        match self.loop_count {
+            x if x >= self.total_counts => {
+                self.currents.q = 0.;
+                self.currents.q = 0.;
+                // if dq_currents.q < 0.1 && dq_currents.d < 0.1 {
+                //     tim1.ccr1.write(|w| w.ccr1().bits(0));
+                //     tim1.ccr2.write(|w| w.ccr2().bits(0));
+                //     tim1.ccr3.write(|w| w.ccr3().bits(0));
+                //     return LoopState::Finished;
+                // }
+                LoopState::Running
+            }
+            _ => LoopState::Running,
+        }
+    }
+
+    fn finished(&mut self) {
+        (self.callback)(&self.record);
+    }
+}
+
+pub struct CalibrateEZeroMsg {
+    pub duration: f32,
+    pub currents: DQCurrents,
+}
+
+impl ExtendedFdcanFrame for CalibrateEZeroMsg {
+    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
+        panic!("Pack not supported")
+    }
+    fn unpack(message: &crate::comms::fdcan::FdcanMessage) -> Self {
+        let buffer = message.data;
+        CalibrateEZeroMsg {
+            duration: f32::from_bits(buffer[0]),
+            currents: DQCurrents {
+                q: f32::from_bits(buffer[1]),
+                d: f32::from_bits(buffer[2]),
+            },
+        }
+    }
+}
+
+pub struct EZeroMsg {
+    e_angle: f32,
+    e_raw: f32,
+    angle: f32,
+    angle_raw: u32,
+}
+
+impl<'a> ExtendedFdcanFrame for EZeroMsg {
+    fn unpack(_: &FdcanMessage) -> Self {
+        panic!("Unack not supported");
+    }
+
+    fn pack(&self) -> FdcanMessage {
+        FdcanMessage::new(
+            0x15,
+            &[
+                self.angle.to_bits(),
+                self.angle_raw,
+                self.e_angle.to_bits(),
+                self.e_raw.to_bits(),
+            ],
+        )
     }
 }

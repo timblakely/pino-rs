@@ -8,6 +8,7 @@ use stm32g4::stm32g474 as device;
 extern crate alloc;
 use alloc::boxed::Box;
 
+pub mod calibrate_e_zero;
 pub mod field_oriented_control;
 pub mod idle_current_distribution;
 pub mod idle_current_sensor;
