@@ -19,6 +19,7 @@ impl PIController {
         let error = target - measurement;
         let voltage = self.k * error + self.ki_integral;
         self.ki_integral += self.k * self.ki * error;
+        self.ki_integral = self.ki_integral.clamp(-self.v_clamp, self.v_clamp);
         voltage.clamp(-self.v_clamp, self.v_clamp)
     }
 }
