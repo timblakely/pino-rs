@@ -4,6 +4,7 @@ use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
     comms::{fdcan::FdcanMessage, messages::ExtendedFdcanFrame},
     current_sensing::PhaseCurrents,
+    led::Led,
     pi_controller::PIController,
 };
 use alloc::boxed::Box;
@@ -136,87 +137,89 @@ fn space_vector_modulation(v_ref: f32, phase_voltages: PhaseVoltages) -> PhaseDu
 
 impl<'a> ControlLoop for CalibrateEZero<'a> {
     fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
-        let encoder = &hardware.encoder;
-        let cordic = &mut hardware.cordic;
-        // Kick off CORDIC conversion
-        let pending_cos_sin = cordic.cos_sin(encoder.electrical_angle);
+        Led::<crate::led::Red>::on_while(|| {
+            let encoder = &hardware.encoder;
+            let cordic = &mut hardware.cordic;
+            // Kick off CORDIC conversion
+            let pending_cos_sin = cordic.cos_sin(encoder.electrical_angle);
 
-        let _asdf = encoder.electrical_angle.in_radians();
-        // Sample ADCs in the meantime
-        let phase_currents = hardware.current_sensor.sample();
-        // Actually get the results of the Cos/Sin transform.
-        let [cos, sin] = pending_cos_sin.get_result();
-        // Calculate the park/clark currents
-        let dq_currents = forward_park_clark(phase_currents, cos, sin);
+            let _asdf = encoder.electrical_angle.in_radians();
+            // Sample ADCs in the meantime
+            let phase_currents = hardware.current_sensor.sample();
+            // Actually get the results of the Cos/Sin transform.
+            let [cos, sin] = pending_cos_sin.get_result();
+            // Calculate the park/clark currents
+            let dq_currents = forward_park_clark(phase_currents, cos, sin);
 
-        // Kick off new CORDIC conversion for future electrical theta
-        // TODO(blakely): Why does Ben use 1.5x here?
-        let new_electrical_theta =
-            encoder.electrical_angle + 1.5f32 * DT * encoder.electrical_velocity;
-        let pending_cos_sin = cordic.cos_sin(new_electrical_theta);
-        // In the meantime, update the controllers for d and q axes
-        let new_q_voltage = self.q_controller.update(dq_currents.q, self.currents.q);
-        let new_d_voltage = self.d_controller.update(dq_currents.d, self.currents.d);
-        // Get the result of the new theta.
-        let [cos, sin] = pending_cos_sin.get_result();
-        let new_voltages = inverse_park_clark(
-            DQVoltages {
-                q: new_q_voltage,
-                d: new_d_voltage,
-            },
-            cos,
-            sin,
-        );
+            // Kick off new CORDIC conversion for future electrical theta
+            // TODO(blakely): Why does Ben use 1.5x here?
+            let new_electrical_theta =
+                encoder.electrical_angle + 1.5f32 * DT * encoder.electrical_velocity;
+            let pending_cos_sin = cordic.cos_sin(new_electrical_theta);
+            // In the meantime, update the controllers for d and q axes
+            let new_q_voltage = self.q_controller.update(dq_currents.q, self.currents.q);
+            let new_d_voltage = self.d_controller.update(dq_currents.d, self.currents.d);
+            // Get the result of the new theta.
+            let [cos, sin] = pending_cos_sin.get_result();
+            let new_voltages = inverse_park_clark(
+                DQVoltages {
+                    q: new_q_voltage,
+                    d: new_d_voltage,
+                },
+                cos,
+                sin,
+            );
 
-        // Get the current rail voltage.
-        let v_bus = hardware.current_sensor.v_bus();
-        let tim1 = &hardware.tim1;
+            // Get the current rail voltage.
+            let v_bus = hardware.current_sensor.v_bus();
+            let tim1 = &hardware.tim1;
 
-        let pwms = match PWM_INVERT {
-            false => PhaseDuty {
-                a: new_voltages.a / v_bus * 0.5 + 0.5,
-                b: new_voltages.b / v_bus * 0.5 + 0.5,
-                c: new_voltages.c / v_bus * 0.5 + 0.5,
-            },
-            true => PhaseDuty {
-                a: -new_voltages.a / v_bus * 0.5 + 0.5,
-                b: -new_voltages.b / v_bus * 0.5 + 0.5,
-                c: -new_voltages.c / v_bus * 0.5 + 0.5,
-            },
-        };
+            let pwms = match PWM_INVERT {
+                false => PhaseDuty {
+                    a: new_voltages.a / v_bus * 0.5 + 0.5,
+                    b: new_voltages.b / v_bus * 0.5 + 0.5,
+                    c: new_voltages.c / v_bus * 0.5 + 0.5,
+                },
+                true => PhaseDuty {
+                    a: -new_voltages.a / v_bus * 0.5 + 0.5,
+                    b: -new_voltages.b / v_bus * 0.5 + 0.5,
+                    c: -new_voltages.c / v_bus * 0.5 + 0.5,
+                },
+            };
 
-        // Set PWM values
-        tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
-        tim1.ccr2.write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
-        tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
+            // Set PWM values
+            tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
+            tim1.ccr2.write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
+            tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
 
-        let angle_raw = match encoder.angle_state().raw_angle {
-            Some(x) => x as u32,
-            None => 0,
-        };
+            let angle_raw = match encoder.angle_state().raw_angle {
+                Some(x) => x as u32,
+                None => 0,
+            };
 
-        self.record = EZeroMsg {
-            angle: encoder.angle_state().angle.in_radians(),
-            angle_raw,
-            e_angle: encoder.electrical_angle.in_radians(),
-            e_raw: angle_raw as f32 / 21.,
-        };
+            self.record = EZeroMsg {
+                angle: encoder.angle_state().angle.in_radians(),
+                angle_raw,
+                e_angle: encoder.electrical_angle.in_radians(),
+                e_raw: angle_raw as f32 / 21.,
+            };
 
-        self.loop_count += 1;
-        match self.loop_count {
-            x if x >= self.total_counts => {
-                self.currents.q = 0.;
-                self.currents.q = 0.;
-                // if dq_currents.q < 0.1 && dq_currents.d < 0.1 {
-                //     tim1.ccr1.write(|w| w.ccr1().bits(0));
-                //     tim1.ccr2.write(|w| w.ccr2().bits(0));
-                //     tim1.ccr3.write(|w| w.ccr3().bits(0));
-                //     return LoopState::Finished;
-                // }
-                LoopState::Running
+            self.loop_count += 1;
+            match self.loop_count {
+                x if x >= self.total_counts => {
+                    self.currents.q = 0.;
+                    self.currents.d = 0.;
+                    // if dq_currents.q < 0.1 && dq_currents.d < 0.1 {
+                    //     tim1.ccr1.write(|w| w.ccr1().bits(0));
+                    //     tim1.ccr2.write(|w| w.ccr2().bits(0));
+                    //     tim1.ccr3.write(|w| w.ccr3().bits(0));
+                    //     return LoopState::Finished;
+                    // }
+                    LoopState::Running
+                }
+                _ => LoopState::Running,
             }
-            _ => LoopState::Running,
-        }
+        })
     }
 
     fn finished(&mut self) {
