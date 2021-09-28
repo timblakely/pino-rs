@@ -20,8 +20,8 @@ const SQRT_3: f32 = 1.73205080757;
 const FRAC_SQRT_3_2: f32 = SQRT_3 / 2.;
 // TODO(blakely): Hardcoded here
 const DT: f32 = 1. / 40_000.;
-const MIN_PWM_VALUE: f32 = 0.;
-const MAX_PWM_VALUE: f32 = 2125.;
+const _MIN_PWM_VALUE: f32 = 0.;
+const _MAX_PWM_VALUE: f32 = 2125.;
 const PWM_INVERT: bool = true;
 
 pub struct DQCurrents {
@@ -115,7 +115,7 @@ fn inverse_park_clark(dq_voltages: DQVoltages, cos: f32, sin: f32) -> PhaseVolta
     PhaseVoltages { a, b, c }
 }
 
-fn space_vector_modulation(v_ref: f32, phase_voltages: PhaseVoltages) -> PhaseDuty {
+fn _space_vector_modulation(v_ref: f32, phase_voltages: PhaseVoltages) -> PhaseDuty {
     let PhaseVoltages {
         a: a_raw,
         b: b_raw,

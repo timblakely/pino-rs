@@ -3,15 +3,12 @@
 #![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::messages::{CurrentDistribution, Inductances, Messages, OutgoingFdcanFrame},
+    comms::messages::{CurrentDistribution, Inductances, Messages},
     commutation::{
-        calibrate_e_zero::CalibrateEZero,
-        field_oriented_control::{DQCurrents, FieldOrientedControl},
-        measure_inductance::MeasureInductance,
-        measure_resistance::MeasureResistance,
-        phase_current::PhaseCurrent,
-        read_encoder::ReadEncoder,
-        CalibrateADC, Commutator, IdleCurrentDistribution, IdleCurrentSensor,
+        calibrate_e_zero::CalibrateEZero, measure_inductance::MeasureInductance,
+        measure_resistance::MeasureResistance, phase_current::PhaseCurrent,
+        read_encoder::ReadEncoder, CalibrateADC, Commutator, IdleCurrentDistribution,
+        IdleCurrentSensor,
     },
     driver,
 };
@@ -36,12 +33,12 @@ fn main() -> ! {
         match Messages::unpack_fdcan(message) {
             Some(Messages::IdleCurrentSense(m)) => {
                 Commutator::set(IdleCurrentSensor::new(m.duration, |measurement| {
-                    fdcan.send_message(measurement.pack());
+                    fdcan.send_message(measurement);
                 }))
             }
             Some(Messages::CalibrateADC(m)) => {
                 Commutator::set(CalibrateADC::new(m.duration, |measurement| {
-                    fdcan.send_message(measurement.pack());
+                    fdcan.send_message(measurement);
                 }))
             }
             Some(Messages::IdleCurrentDistribution(m)) => {
@@ -51,7 +48,7 @@ fn main() -> ! {
                     m.current_range,
                     m.phase,
                     |bins| {
-                        fdcan.send_message(CurrentDistribution { bins }.pack());
+                        fdcan.send_message(&CurrentDistribution { bins });
                     },
                 ))
             }
@@ -61,12 +58,9 @@ fn main() -> ! {
                 m.pwm_duty,
                 m.sample_pwm_percent,
                 |inductances| {
-                    fdcan.send_message(
-                        Inductances {
-                            inductances: &inductances,
-                        }
-                        .pack(),
-                    );
+                    fdcan.send_message(&Inductances {
+                        inductances: &inductances,
+                    });
                 },
             )),
             Some(Messages::MeasureResistance(m)) => Commutator::set(MeasureResistance::new(
@@ -74,7 +68,7 @@ fn main() -> ! {
                 m.target_voltage,
                 m.phase,
                 |measurement| {
-                    fdcan.send_message(measurement.pack());
+                    fdcan.send_message(measurement);
                 },
             )),
             Some(Messages::PhaseCurrentCommand(m)) => Commutator::set(PhaseCurrent::new(
@@ -84,12 +78,12 @@ fn main() -> ! {
                 m.k,
                 m.ki,
             )),
-            Some(Messages::ReadEncoder(_)) => Commutator::set(ReadEncoder::new(|results| {
-                fdcan.send_message(results.pack())
-            })),
+            Some(Messages::ReadEncoder(_)) => {
+                Commutator::set(ReadEncoder::new(|results| fdcan.send_message(results)))
+            }
             Some(Messages::CalibrateEZero(m)) => {
                 Commutator::set(CalibrateEZero::new(m.duration, m.currents, |measurement| {
-                    fdcan.send_message(measurement.pack());
+                    fdcan.send_message(measurement);
                 }))
             }
             _ => (),

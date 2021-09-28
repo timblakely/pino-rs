@@ -11,6 +11,8 @@ use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
+use super::messages::OutgoingFdcanFrame;
+
 pub mod extended_filter;
 pub mod rx_fifo;
 pub mod standard_filter;
@@ -258,7 +260,11 @@ impl Fdcan<Init> {
 }
 
 impl Fdcan<Running> {
-    pub fn send_message(&mut self, message: FdcanMessage) {
+    pub fn send_message(&mut self, message: &impl OutgoingFdcanFrame) {
+        self.send_serialized_message(message.pack());
+    }
+
+    fn send_serialized_message(&mut self, message: FdcanMessage) {
         match self.next_tx() {
             Some(idx) => {
                 self.sram.tx_buffers[idx].assign(&message);
