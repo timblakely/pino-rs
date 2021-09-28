@@ -14,17 +14,20 @@ pub trait LedBit {
 }
 
 impl<T> Led<T> {
-    pub fn on_while(callback: fn())
+    pub fn on_while<R, C>(mut callback: C) -> R
     where
+        C: Sized,
+        C: FnMut() -> R,
         Self: LedBit,
     {
         unsafe {
             *(0x4800_0418 as *mut u32) = 1 << Self::bit();
         }
-        callback();
+        let retval = callback();
         unsafe {
             *(0x4800_0418 as *mut u32) = 1 << (Self::bit() + 16);
         }
+        retval
     }
 }
 
