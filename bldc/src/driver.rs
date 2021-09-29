@@ -1,6 +1,7 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::comms::fdcan::{Fdcan, FdcanMessage, Running, FDCAN_INTERRUPTS};
+use crate::comms::messages::IncomingFdcanFrame;
 use crate::commutation::{
     CalibrateADC, Commutator, ControlHardware, ControlLoopVars, CONTROL_LOOP,
 };
@@ -713,13 +714,17 @@ impl Driver<Ready> {
         }
     }
 
-    // pub fn on<'a>(&self, message_id: u32, callback: *mut (dyn FnMut(&FdcanMessage) + Sync + Send)) {
-    //     crate::util::interrupts::block_interrupts(
-    //         FDCAN_INTERRUPTS,
-    //         &FDCAN_SHARE,
-    //         move |mut fdcan| {
-    //             fdcan.on(message_id, callback);
-    //         },
-    //     );
-    // }
+    pub fn on<'a, M: IncomingFdcanFrame>(
+        &self,
+        message_id: u32,
+        callback: impl for<'r> FnMut(M) + 'a + Send,
+    ) {
+        crate::util::interrupts::block_interrupts(
+            FDCAN_INTERRUPTS,
+            &FDCAN_SHARE,
+            move |mut fdcan| {
+                fdcan.on(message_id, callback);
+            },
+        );
+    }
 }

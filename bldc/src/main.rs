@@ -5,10 +5,12 @@
 use bldc::{
     comms::messages::{CurrentDistribution, Inductances, Messages},
     commutation::{
-        calibrate_e_zero::CalibrateEZero, measure_inductance::MeasureInductance,
-        measure_resistance::MeasureResistance, phase_current::PhaseCurrent,
-        read_encoder::ReadEncoder, CalibrateADC, Commutator, IdleCurrentDistribution,
-        IdleCurrentSensor,
+        calibrate_e_zero::{CalibrateEZero, CalibrateEZeroMsg},
+        measure_inductance::MeasureInductance,
+        measure_resistance::MeasureResistance,
+        phase_current::PhaseCurrent,
+        read_encoder::ReadEncoder,
+        CalibrateADC, Commutator, IdleCurrentDistribution, IdleCurrentSensor,
     },
     driver,
 };
@@ -24,10 +26,10 @@ fn main() -> ! {
     // Acquire the driver.
     let driver = driver::take_hardware().configure_peripherals().calibrate();
 
-    // driver.on(0x14, |frame| {
-    //     let mut asdf = 1;
-    //     asdf += 1;
-    // });
+    driver.on(0x14, |frame: CalibrateEZeroMsg| {
+        let mut asdf = 1;
+        asdf += 1;
+    });
 
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {

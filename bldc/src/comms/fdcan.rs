@@ -101,7 +101,7 @@ pub trait EnterInit {}
 impl EnterInit for Uninit {}
 impl EnterInit for Running {}
 
-struct Callback<'a> {
+pub struct Callback<'a> {
     callback: Box<dyn for<'r> FnMut(&'r FdcanMessage) + 'a + Send>,
 }
 impl<'a> Callback<'a> {
@@ -331,14 +331,15 @@ impl Fdcan<Running> {
     pub fn on<'a, M: IncomingFdcanFrame>(
         &mut self,
         message_id: u32,
-        callback: impl for<'r> FnMut(&'r FdcanMessage) + 'a + Send,
+        mut callback: impl for<'r> FnMut(M) + 'a + Send,
     ) {
-        let asdf = Callback {
-            callback: Box::new(callback),
-        };
-
         self.handlers
-            .insert(message_id, Callback::make_static(asdf))
+            .insert(
+                message_id,
+                Callback::make_static(Callback {
+                    callback: Box::new(|message| callback(M::unpack(message))),
+                }),
+            )
             .unwrap_or_else(|_| panic!("Ran out of callback space"));
     }
 }
