@@ -24,9 +24,6 @@ fn main() -> ! {
     // Acquire the driver.
     let driver = driver::take_hardware().configure_peripherals().calibrate();
 
-    // Commutator::set(FieldOrientedControl::new(DQCurrents { q: 1., d: 0. }));
-    // Commutator::set(FieldOrientedControl::new(DQCurrents { q: 0.0, d: 1.0 }));
-
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
         // We've received a message via the FDCAN.
