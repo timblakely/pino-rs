@@ -24,6 +24,11 @@ fn main() -> ! {
     // Acquire the driver.
     let driver = driver::take_hardware().configure_peripherals().calibrate();
 
+    // driver.on(0x14, |frame| {
+    //     let mut asdf = 1;
+    //     asdf += 1;
+    // });
+
     // Listen for any incoming FDCAN messages.
     driver.listen(|fdcan, message| {
         // We've received a message via the FDCAN.

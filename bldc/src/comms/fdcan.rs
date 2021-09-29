@@ -1,17 +1,23 @@
 //! FDCAN implementation
+
+extern crate alloc;
+
 use crate::{block_until, block_while};
+use alloc::boxed::Box;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
+use heapless::FnvIndexMap;
+use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
 use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
-use super::messages::OutgoingFdcanFrame;
+use super::messages::{IncomingFdcanFrame, OutgoingFdcanFrame};
 
 pub mod extended_filter;
 pub mod rx_fifo;
@@ -95,18 +101,36 @@ pub trait EnterInit {}
 impl EnterInit for Uninit {}
 impl EnterInit for Running {}
 
+struct Callback<'a> {
+    callback: Box<dyn for<'r> FnMut(&'r FdcanMessage) + 'a + Send>,
+}
+impl<'a> Callback<'a> {
+    pub fn run(&mut self, message: &'a FdcanMessage) {
+        (Self::as_scoped_mut(self).callback)(message)
+    }
+
+    pub fn make_static<'b>(x: Callback<'b>) -> Callback<'static> {
+        unsafe { core::mem::transmute(x) }
+    }
+
+    pub fn as_scoped_mut<'b>(x: &'b mut Callback<'a>) -> &'b mut Callback<'b> {
+        unsafe { core::mem::transmute(x) }
+    }
+}
+
 pub struct Fdcan<S> {
     sram: Sram,
     peripheral: device::FDCAN1,
-    #[allow(dead_code)]
-    mode_state: S,
+    _mode_state: S,
+    handlers: FnvIndexMap<u32, Callback<'static>, 16>,
 }
 
-pub fn take(fdcan: device::FDCAN1) -> Fdcan<Uninit> {
+pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Uninit> {
     Fdcan {
         sram: Sram::get(),
         peripheral: fdcan,
-        mode_state: Uninit {},
+        _mode_state: Uninit {},
+        handlers: FnvIndexMap::new(),
     }
 }
 
@@ -120,7 +144,8 @@ impl<S: EnterInit> Fdcan<S> {
         Fdcan {
             sram: self.sram,
             peripheral: self.peripheral,
-            mode_state: Init {},
+            _mode_state: Init {},
+            handlers: self.handlers,
         }
     }
 }
@@ -254,7 +279,8 @@ impl Fdcan<Init> {
         Fdcan {
             peripheral: self.peripheral,
             sram: self.sram,
-            mode_state: Running,
+            _mode_state: Running,
+            handlers: self.handlers,
         }
     }
 }
@@ -282,6 +308,38 @@ impl Fdcan<Running> {
         // TODO(blakely): Handle the case where we're sending too many messages at once and the FIFO
         // can't keep up.
         Some(self.peripheral.txfqs.read().tfqpi().bits() as usize)
+    }
+
+    pub fn process_messages(&mut self) {
+        crate::util::interrupts::block_interrupts(
+            FDCAN_INTERRUPTS,
+            &FDCAN_RECEIVE_BUF,
+            |mut buf| {
+                while let Some(message) = buf.dequeue_ref() {
+                    // TODO(blakely): Combine FDCAN_RECEIVE_BUF and FDCAN_SHARE
+                    match self.handlers.get_mut(&message.id) {
+                        None => {
+                            // Unhandled message ID
+                        }
+                        Some(handler) => Callback::as_scoped_mut(handler).run(message),
+                    }
+                }
+            },
+        );
+    }
+
+    pub fn on<'a, M: IncomingFdcanFrame>(
+        &mut self,
+        message_id: u32,
+        callback: impl for<'r> FnMut(&'r FdcanMessage) + 'a + Send,
+    ) {
+        let asdf = Callback {
+            callback: Box::new(callback),
+        };
+
+        self.handlers
+            .insert(message_id, Callback::make_static(asdf))
+            .unwrap_or_else(|_| panic!("Ran out of callback space"));
     }
 }
 

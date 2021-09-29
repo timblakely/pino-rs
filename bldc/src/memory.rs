@@ -6,7 +6,7 @@ extern crate alloc;
 
 // How much space to reserve for the heap. Most usage for DSTs should use nowhere near 4k of memory,
 // but with high power electronics it's better to be safe than sorry.
-const HEAP_SIZE_BYTES: usize = 4096;
+const HEAP_SIZE_BYTES: usize = 1 << 14;
 
 // Should the allocator ever be unable to allocate due to fragmentation or insufficient space, loop
 // here so we know what's wrong. Alternatively, we could panic!, though it's a bit more idiomatic to

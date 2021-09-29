@@ -13,13 +13,12 @@ use crate::util::stm32::{
 };
 use crate::{
     block_until,
-    comms::fdcan::{self, FDCAN_RECEIVE_BUF, FDCAN_SHARE},
+    comms::fdcan::{self, FDCAN_SHARE},
 };
 use crate::{block_while, ic::drv8323rs, ic::ma702};
 extern crate alloc;
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
-use ringbuffer::RingBufferRead;
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
@@ -706,20 +705,21 @@ impl Driver<Ready> {
             // form though...
             crate::util::interrupts::block_interrupts(
                 FDCAN_INTERRUPTS,
-                &FDCAN_RECEIVE_BUF,
-                |mut buf| {
-                    while let Some(message) = buf.dequeue_ref() {
-                        // TODO(blakely): Combine FDCAN_RECEIVE_BUF and FDCAN_SHARE
-                        crate::util::interrupts::block_interrupts(
-                            FDCAN_INTERRUPTS,
-                            &FDCAN_SHARE,
-                            |mut fdcan| {
-                                comms_handler(&mut fdcan, &message);
-                            },
-                        );
-                    }
+                &FDCAN_SHARE,
+                |mut fdcan| {
+                    fdcan.process_messages();
                 },
             );
         }
     }
+
+    // pub fn on<'a>(&self, message_id: u32, callback: *mut (dyn FnMut(&FdcanMessage) + Sync + Send)) {
+    //     crate::util::interrupts::block_interrupts(
+    //         FDCAN_INTERRUPTS,
+    //         &FDCAN_SHARE,
+    //         move |mut fdcan| {
+    //             fdcan.on(message_id, callback);
+    //         },
+    //     );
+    // }
 }
