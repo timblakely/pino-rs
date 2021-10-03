@@ -28,16 +28,17 @@ pub fn block_interrupt<I: InterruptNumber, T: Send, F: FnOnce(SpinLockGuard<T>)>
 pub fn block_interrupts<
     I: InterruptNumber,
     T: Send,
-    F: FnOnce(SpinLockGuard<T>),
+    R,
+    F: FnOnce(SpinLockGuard<T>) -> R,
     const N: usize,
 >(
     irqs: [I; N],
     lock: &SpinLock<Option<T>>,
     f: F,
-) {
+) -> R {
     let enabled_iter = irqs.map(|irq| NVIC::is_enabled(irq));
     irqs.map(|irq| disable_irq(irq));
-    f(SpinLockGuard::map(
+    let result = f(SpinLockGuard::map(
         lock.try_lock()
             .expect("Lock held prior to entering critical section"),
         |o| {
@@ -52,6 +53,7 @@ pub fn block_interrupts<
                 enable_irq(*irq)
             }
         });
+    result
 }
 
 pub enum InterruptState {
