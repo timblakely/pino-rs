@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use crate::comms::fdcan::{Fdcan, IncomingFdcanFrame, Running};
 use crate::comms::messages::Message;
 use crate::commutation::calibrate_adc::CalibrateADC;
-use crate::commutation::{Commutator, ControlHardware, ControlLoopVars, CONTROL_LOOP};
+use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
 use crate::current_sensing;
 use crate::encoder::Encoder;
@@ -637,14 +637,11 @@ impl Driver<Init> {
                 .bits32()
         });
 
-        *CONTROL_LOOP.lock() = Some(ControlLoopVars {
-            control_loop: None,
-            hw: ControlHardware {
-                current_sensor: current_sensor,
-                tim1: self.mode_state.tim1,
-                encoder,
-                cordic: Cordic::new(cordic, 20),
-            },
+        Commutator::donate_hardware(ControlHardware {
+            current_sensor: current_sensor,
+            tim1: self.mode_state.tim1,
+            encoder,
+            cordic: Cordic::new(cordic, 20),
         });
 
         Driver {

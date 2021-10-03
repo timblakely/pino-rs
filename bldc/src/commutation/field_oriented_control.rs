@@ -167,4 +167,6 @@ impl ControlLoop for FieldOrientedControl {
         tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
         LoopState::Running
     }
+
+    fn finished(&mut self) {}
 }
