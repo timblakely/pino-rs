@@ -9,6 +9,7 @@ pub mod cordic;
 pub mod current_sensing;
 pub mod driver;
 pub mod encoder;
+pub mod foc;
 pub mod ic;
 pub mod led;
 pub mod memory;

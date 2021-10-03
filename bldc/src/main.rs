@@ -6,7 +6,8 @@ use bldc::{
     comms::{fdcan, messages::Message},
     commutation::{
         calibrate_adc::CalibrateADCCmd,
-        calibrate_e_zero::{CalibrateEZeroCmd, EZeroMsg},
+        calibrate_e_zero::{CalibrateEZero, CalibrateEZeroCmd, EZeroMsg},
+        Commutator,
     },
     driver,
 };
@@ -22,13 +23,15 @@ fn main() -> ! {
     // Acquire the driver.
     let mut driver = driver::take_hardware().configure_peripherals().calibrate();
 
-    driver.on(Message::CalibrateEZero, |_frame: CalibrateEZeroCmd| {
-        fdcan::send_message(&EZeroMsg {
-            angle: 12.3,
-            angle_raw: 456,
-            e_angle: 0.789,
-            e_raw: 1337.,
-        })
+    driver.on(Message::CalibrateEZero, |cmd: CalibrateEZeroCmd| {
+        Commutator::set(CalibrateEZero::new(cmd.duration, cmd.currents, |_| {
+            fdcan::send_message(&EZeroMsg {
+                angle: 12.3,
+                angle_raw: 456,
+                e_angle: 0.789,
+                e_raw: 1337.,
+            })
+        }))
     });
 
     driver.on(Message::CalibrateADC, |_frame: CalibrateADCCmd| {});

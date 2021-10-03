@@ -22,7 +22,7 @@ pub mod read_encoder;
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;
 pub use idle_current_sensor::*;
-use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync::acquire_hw};
+use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 pub struct ControlHardware {
     pub current_sensor: CurrentSensor<current_sensing::Ready>,
