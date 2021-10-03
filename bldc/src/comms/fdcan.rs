@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+use crate::util::interrupts::block_interrupts;
 use crate::{block_until, block_while};
 use alloc::boxed::Box;
 use core::marker::PhantomData;
@@ -27,7 +28,7 @@ pub mod tx_fifo;
 
 type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<FdcanMessage, 16>;
 pub static FDCAN_RECEIVE_BUF: SpinLock<Option<&'static mut ReceiveBuffer>> = SpinLock::new(None);
-pub static FDCAN_SHARE: SpinLock<Option<Fdcan<Running>>> = SpinLock::new(None);
+static SHARED_DEVICE: SpinLock<Option<FdcanDevice>> = SpinLock::new(None);
 pub const FDCAN_INTERRUPTS: [device::Interrupt; 2] = [
     device::interrupt::FDCAN1_INTR0_IT,
     device::interrupt::FDCAN1_INTR1_IT,
@@ -93,13 +94,16 @@ impl DerefMut for Sram {
     }
 }
 
-pub struct Uninit;
-pub struct Init;
-pub struct Running;
+struct FdcanDevice {
+    sram: Sram,
+    fdcan: device::FDCAN1,
+}
 
-pub trait EnterInit {}
-impl EnterInit for Uninit {}
-impl EnterInit for Running {}
+pub struct Init {
+    sram: Sram,
+    fdcan: device::FDCAN1,
+}
+pub struct Running;
 
 pub struct Callback<'a> {
     callback: Box<dyn for<'r> FnMut(&'r FdcanMessage) + 'a + Send>,
@@ -119,36 +123,27 @@ impl<'a> Callback<'a> {
 }
 
 pub struct Fdcan<S> {
-    sram: Sram,
-    peripheral: device::FDCAN1,
-    _mode_state: S,
+    mode_state: S,
     handlers: FnvIndexMap<u32, Callback<'static>, 16>,
 }
 
-pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Uninit> {
+pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
+    *FDCAN_RECEIVE_BUF.try_lock().unwrap() = Some(init_buffer());
+    // Enter init mode.
+    fdcan.cccr.modify(|_, w| w.init().init());
+    // Block until we know we're in init mode.
+    block_while! { fdcan.cccr.read().init() == INIT_A::RUN };
+    // Enable config writing
+    fdcan.cccr.modify(|_, w| w.cce().readwrite());
     Fdcan {
-        sram: Sram::get(),
-        peripheral: fdcan,
-        _mode_state: Uninit {},
+        mode_state: Init {
+            sram: Sram::get(),
+            fdcan,
+        },
         handlers: FnvIndexMap::new(),
     }
 }
 
-impl<S: EnterInit> Fdcan<S> {
-    pub fn enter_init(self) -> Fdcan<Init> {
-        self.peripheral.cccr.modify(|_, w| w.init().init());
-        // Block until we know we're in init mode.
-        block_while! { self.peripheral.cccr.read().init() == INIT_A::RUN };
-        // Enable config writing
-        self.peripheral.cccr.modify(|_, w| w.cce().readwrite());
-        Fdcan {
-            sram: self.sram,
-            peripheral: self.peripheral,
-            _mode_state: Init {},
-            handlers: self.handlers,
-        }
-    }
-}
 impl Fdcan<Init> {
     pub fn set_extended_filter(
         mut self,
@@ -158,7 +153,7 @@ impl Fdcan<Init> {
         id1: u32,
         id2: u32,
     ) -> Self {
-        let filter = &mut self.sram.extended_filters[i];
+        let filter = &mut self.mode_state.sram.extended_filters[i];
         filter
             .f0
             .update(|_, w| w.mode().variant(mode).id1().set(id1));
@@ -169,7 +164,7 @@ impl Fdcan<Init> {
     }
 
     pub fn configure_protocol(self) -> Self {
-        self.peripheral.cccr.modify(|_, w| {
+        self.mode_state.fdcan.cccr.modify(|_, w| {
             w // Enable TX pause
                 .txp()
                 .clear_bit()
@@ -206,9 +201,9 @@ impl Fdcan<Init> {
 
     pub fn configure_timing(self) -> Self {
         // Set clock divider. This currently assumes we're running at full speed at 170MHz.
-        self.peripheral.ckdiv.modify(|_, w| w.pdiv().div1());
+        self.mode_state.fdcan.ckdiv.modify(|_, w| w.pdiv().div1());
         // Configure SDCAN timing.
-        self.peripheral.nbtp.modify(|_, w| {
+        self.mode_state.fdcan.nbtp.modify(|_, w| {
             // Safety: The stm32-rs package does not have an allowable range set for these fields,
             // so it's inherently unsafe to set arbitrary bits. For now these values are hard-coded
             // to known good values.
@@ -225,7 +220,7 @@ impl Fdcan<Init> {
             }
         });
         // Configure SDCAN timing.
-        self.peripheral.dbtp.modify(|_, w| {
+        self.mode_state.fdcan.dbtp.modify(|_, w| {
             // Safety: Same as above: the stm32-rs package does not have an allowable range set for
             // these fields.
             // 5MHz
@@ -245,14 +240,14 @@ impl Fdcan<Init> {
 
     pub fn fifo_mode(self) -> Self {
         // FIFO mode.
-        self.peripheral.txbc.modify(|_, w| w.tfqm().fifo());
+        self.mode_state.fdcan.txbc.modify(|_, w| w.tfqm().fifo());
         self
     }
 
     pub fn configure_interrupts(self) -> Self {
         // Why does ST make 0=INT1 and 1=INT0?!
         // _WHYYYYYYYYY IS INT0 MAPPED TO EINT1?!?!?!?!?!?!??!?!?!?!?!?!?!?_
-        self.peripheral.ils.modify(|_, w| {
+        self.mode_state.fdcan.ils.modify(|_, w| {
             w
                 // Tx event+error notifications on INT0
                 .tferr()
@@ -261,25 +256,51 @@ impl Fdcan<Init> {
                 .rxfifo0()
                 .clear_bit()
         });
+        self
+    }
+
+    pub fn enable_interrupts(&self) -> &Self {
         // Enable Tx and Rx events
-        self.peripheral
+        self.mode_state
+            .fdcan
             .ie
             .modify(|_, w| w.tefne().set_bit().rf0ne().set_bit());
         // Enable both FDCAN interrupts.
-        self.peripheral
+        self.mode_state
+            .fdcan
             .ile
             .modify(|_, w| w.eint0().set_bit().eint1().set_bit());
         self
     }
 
+    pub fn disable_interrupts(self) -> Self {
+        self.mode_state
+            .fdcan
+            .ie
+            .modify(|_, w| w.tefne().clear_bit().rf0ne().clear_bit());
+        self.mode_state
+            .fdcan
+            .ile
+            .modify(|_, w| w.eint0().clear_bit().eint1().clear_bit());
+        self
+    }
+
     pub fn start(self) -> Fdcan<Running> {
-        self.peripheral.cccr.modify(|_, w| w.init().run());
-        // Block until we know we're running.
-        block_until! { self.peripheral.cccr.read().init() == INIT_A::RUN };
+        // Enable interrupts.
+        self.enable_interrupts();
+        let Init { fdcan, sram } = self.mode_state;
+        // Donate the device and SRAM to the interrupts,
+        *SHARED_DEVICE.lock() = Some(FdcanDevice { fdcan, sram });
+        // We needx access to the resources we just donated to enable the device, so we block the
+        // interrupts while we start to make sure the device is fully ready.
+        block_interrupts(FDCAN_INTERRUPTS, &SHARED_DEVICE, |shared| {
+            // Enter run mode.
+            shared.fdcan.cccr.modify(|_, w| w.init().run());
+            // Block until we know we're running.
+            block_until! { shared.fdcan.cccr.read().init() == INIT_A::RUN };
+        });
         Fdcan {
-            peripheral: self.peripheral,
-            sram: self.sram,
-            _mode_state: Running,
+            mode_state: Running,
             handlers: self.handlers,
         }
     }
@@ -291,43 +312,48 @@ impl Fdcan<Running> {
     }
 
     fn send_serialized_message(&mut self, message: FdcanMessage) {
-        match self.next_tx() {
-            Some(idx) => {
-                self.sram.tx_buffers[idx].assign(&message);
-                self.peripheral.txbar.modify(|_, w|
-                        // Safety: No enum associated with this in stm32-rs. Bit field corresponds
-                        // to which tx buffer is being used.
-                        unsafe { w.ar().bits(1 << idx) })
-            }
-            // TODO(blakely): Some actual proper error handling here...
-            None => panic!("Couldn't get tx buffer"),
-        };
-    }
-    // TODO(blakely): Move to an actual TxFifo struct/impl
-    fn next_tx(&self) -> Option<usize> {
-        // TODO(blakely): Handle the case where we're sending too many messages at once and the FIFO
-        // can't keep up.
-        Some(self.peripheral.txfqs.read().tfqpi().bits() as usize)
+        // Block interrupts, acquiring the shared hardware.
+        block_interrupts(FDCAN_INTERRUPTS, &SHARED_DEVICE, |mut shared| {
+            // TODO(blakely): Move to an actual TxFifo struct/impl
+            let tx_idx = shared.fdcan.txfqs.read().tfqpi().bits() as usize;
+            shared.sram.tx_buffers[tx_idx].assign(&message);
+            // Safety: No enum associated with this in stm32-rs. Bit field corresponds
+            // to which tx buffer is being used.
+            shared
+                .fdcan
+                .txbar
+                .modify(|_, w| unsafe { w.ar().bits(1 << tx_idx) });
+        });
     }
 
     pub fn process_messages(&mut self) {
+        // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 (Rx) from
+        // firing - the only other interrupt that shares this particular buffer - ensuring
+        // we aren't preempted when reading from it. This is fine in general since the
+        // peripheral itself has an internal buffer, and as long as we can clear the backlog
+        // before the peripheral receives 4 requests we should be good. Alternatively, we
+        // could just process a single message here to make sure that we only hold this lock
+        // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
+        // form though...
+        // block_interrupts(FDCAN_INTERRUPTS, &FDCAN_SHARE, |mut fdcan| {
+
+        // });
         crate::util::interrupts::block_interrupts(
             FDCAN_INTERRUPTS,
             &FDCAN_RECEIVE_BUF,
             |mut buf| {
                 while let Some(message) = buf.dequeue_ref() {
                     // TODO(blakely): Combine FDCAN_RECEIVE_BUF and FDCAN_SHARE
-                    match self.handlers.get_mut(&message.id) {
-                        None => {
-                            // Unhandled message ID
-                        }
-                        Some(handler) => Callback::as_scoped_mut(handler).run(message),
+                    if let Some(handler) = self.handlers.get_mut(&message.id) {
+                        Callback::as_scoped_mut(handler).run(message);
                     }
                 }
             },
         );
     }
+}
 
+impl<T> Fdcan<T> {
     pub fn on<'a, M: IncomingFdcanFrame>(
         &mut self,
         message_id: u32,
@@ -350,7 +376,7 @@ impl Fdcan<Running> {
 }
 
 fn fdcan1_tx_isr() {
-    let fdcan = &sync::acquire_hw(&FDCAN_SHARE).peripheral;
+    let fdcan = &sync::acquire_hw(&SHARED_DEVICE).fdcan;
     let get_idx = fdcan.txefs.read().efgi().bits();
     // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
     // value retrieved from the get index it's fine.
@@ -362,10 +388,10 @@ fn fdcan1_tx_isr() {
 }
 
 fn fdcan1_rx_isr() {
-    let fdcan = &sync::acquire_hw(&FDCAN_SHARE);
+    let shared = &sync::acquire_hw(&SHARED_DEVICE);
 
     // Figure out get index
-    let get_idx = fdcan.peripheral.rxf0s.read().f0gi().bits();
+    let get_idx = shared.fdcan.rxf0s.read().f0gi().bits();
     {
         // Lock the receive buffer. Technically only used in the main thread, but good practice to
         // drop locks as soon as you can.
@@ -375,7 +401,7 @@ fn fdcan1_rx_isr() {
         let receive_buf = guard
             .as_mut()
             .expect("FDCAN RX ISR handled prior to populating buffer");
-        let rx_buffer = &fdcan.sram.rx_fifo0[get_idx as usize];
+        let rx_buffer = &shared.sram.rx_fifo0[get_idx as usize];
         (*receive_buf).push(FdcanMessage {
             id: rx_buffer.id(),
             data: *rx_buffer.data(),
@@ -385,12 +411,12 @@ fn fdcan1_rx_isr() {
     // Acknowledge the peripheral that we've read the message.
     // Safety: Upstream: not restricted to enum or range in stm32-rs. But since we're using the
     // value retrieved from the get index it's fine.
-    fdcan
-        .peripheral
+    shared
+        .fdcan
         .rxf0a
         .modify(|_, w| unsafe { w.f0ai().bits(get_idx) });
     // Finally, clear the fact that we've received an RxFIFO0 interrupt
-    fdcan.peripheral.ir.modify(|_, w| w.rf0n().set_bit());
+    shared.fdcan.ir.modify(|_, w| w.rf0n().set_bit());
 }
 
 #[derive(Debug)]
@@ -430,10 +456,6 @@ fn init_buffer() -> &'static mut ReceiveBuffer {
     // is unsafe - but since it's statically allocated it's alright to return its address since it's
     // guaranteed not to change.
     unsafe { &mut *UNINIT_BUFFER.as_mut_ptr() }
-}
-
-pub fn init_receive_buf() {
-    *FDCAN_RECEIVE_BUF.try_lock().unwrap() = Some(init_buffer());
 }
 
 pub trait IncomingFdcanFrame {

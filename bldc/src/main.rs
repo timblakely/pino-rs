@@ -17,7 +17,7 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 #[cortex_m_rt::entry]
 fn main() -> ! {
     // Acquire the driver.
-    let driver = driver::take_hardware().configure_peripherals().calibrate();
+    let mut driver = driver::take_hardware().configure_peripherals().calibrate();
 
     driver.on(Message::CalibrateEZero, |_frame: CalibrateEZeroCmd| {
         let mut _asdf = 1;

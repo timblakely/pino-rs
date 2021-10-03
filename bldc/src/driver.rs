@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use crate::comms::fdcan::{IncomingFdcanFrame, FDCAN_INTERRUPTS};
+use crate::comms::fdcan::{Fdcan, IncomingFdcanFrame, Running};
 use crate::comms::messages::Message;
 use crate::commutation::calibrate_adc::CalibrateADC;
 use crate::commutation::{Commutator, ControlHardware, ControlLoopVars, CONTROL_LOOP};
@@ -8,13 +8,12 @@ use crate::cordic::Cordic;
 use crate::current_sensing;
 use crate::encoder::Encoder;
 use crate::memory::initialize_heap;
-use crate::util::interrupts::block_interrupts;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
 use crate::{
     block_until,
-    comms::fdcan::{self, FDCAN_SHARE},
+    comms::fdcan::{self},
 };
 use crate::{block_while, ic::drv8323rs, ic::ma702};
 extern crate alloc;
@@ -26,6 +25,12 @@ const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
 pub struct Driver<S> {
     pub mode_state: S,
+}
+
+pub struct DriverHardware {
+    pub drv: Drv8323rs<drv8323rs::Ready>,
+    pub gpioa: device::GPIOA,
+    pub fdcan: Fdcan<Running>,
 }
 
 pub struct Init {
@@ -50,13 +55,11 @@ pub struct Init {
 }
 
 pub struct Calibrating {
-    pub drv: Drv8323rs<drv8323rs::Ready>,
-    pub gpioa: device::GPIOA,
+    pub hardware: DriverHardware,
 }
 
 pub struct Ready {
-    pub drv: Drv8323rs<drv8323rs::Ready>,
-    pub gpioa: device::GPIOA,
+    pub hardware: DriverHardware,
 }
 
 pub fn take_hardware() -> Driver<Init> {
@@ -595,7 +598,6 @@ impl Driver<Init> {
 
         // Configure FDCAN
         let fdcan = fdcan::take(self.mode_state.fdcan)
-            .enter_init()
             // TODO(blakely): clean up this API.
             .set_extended_filter(
                 0,
@@ -604,15 +606,11 @@ impl Driver<Init> {
                 0x1,
                 0xFFF_FFFF,
             )
+            .configure_interrupts()
             .configure_protocol()
             .configure_timing()
-            .configure_interrupts()
             .fifo_mode()
             .start();
-
-        fdcan::init_receive_buf();
-
-        *FDCAN_SHARE.lock() = Some(fdcan);
 
         // Tx IRQ
         enable_irq(device::Interrupt::FDCAN1_INTR0_IT);
@@ -663,8 +661,11 @@ impl Driver<Init> {
 
         Driver {
             mode_state: Calibrating {
-                drv,
-                gpioa: self.mode_state.gpioa,
+                hardware: DriverHardware {
+                    drv,
+                    gpioa: self.mode_state.gpioa,
+                    fdcan,
+                },
             },
         }
     }
@@ -683,38 +684,26 @@ impl Driver<Calibrating> {
 
         Driver {
             mode_state: Ready {
-                drv: self.mode_state.drv,
-                gpioa: self.mode_state.gpioa,
+                hardware: self.mode_state.hardware,
             },
         }
     }
 }
 
 impl Driver<Ready> {
-    pub fn listen(self) -> ! {
+    pub fn listen(mut self) -> ! {
         Commutator::enable_loop();
 
         loop {
-            // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 (Rx) from
-            // firing - the only other interrupt that shares this particular buffer - ensuring
-            // we aren't preempted when reading from it. This is fine in general since the
-            // peripheral itself has an internal buffer, and as long as we can clear the backlog
-            // before the peripheral receives 4 requests we should be good. Alternatively, we
-            // could just process a single message here to make sure that we only hold this lock
-            // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
-            // form though...
-            block_interrupts(FDCAN_INTERRUPTS, &FDCAN_SHARE, |mut fdcan| {
-                fdcan.process_messages();
-            });
+            let fdcan = &mut self.mode_state.hardware.fdcan;
+            fdcan.process_messages();
         }
     }
 
-    pub fn on<'a, M>(&self, message: Message, callback: impl for<'r> FnMut(M) + 'a + Send)
+    pub fn on<'a, M>(&mut self, message: Message, callback: impl for<'r> FnMut(M) + 'a + Send)
     where
         M: IncomingFdcanFrame,
     {
-        block_interrupts(FDCAN_INTERRUPTS, &FDCAN_SHARE, move |mut fdcan| {
-            fdcan.on(message as u32, callback);
-        });
+        self.mode_state.hardware.fdcan.on(message as u32, callback);
     }
 }
