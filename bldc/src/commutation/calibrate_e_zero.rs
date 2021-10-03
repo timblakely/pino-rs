@@ -236,7 +236,7 @@ pub struct CalibrateEZeroCmd {
 }
 
 impl IncomingFdcanFrame for CalibrateEZeroCmd {
-    fn unpack(message: &crate::comms::fdcan::FdcanMessage) -> Self {
+    fn unpack(message: FdcanMessage) -> Self {
         let buffer = message.data;
         CalibrateEZeroCmd {
             duration: f32::from_bits(buffer[0]),
@@ -249,10 +249,10 @@ impl IncomingFdcanFrame for CalibrateEZeroCmd {
 }
 
 pub struct EZeroMsg {
-    e_angle: f32,
-    e_raw: f32,
-    angle: f32,
-    angle_raw: u32,
+    pub e_angle: f32,
+    pub e_raw: f32,
+    pub angle: f32,
+    pub angle_raw: u32,
 }
 
 impl<'a> OutgoingFdcanFrame for EZeroMsg {

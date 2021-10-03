@@ -131,7 +131,7 @@ impl<'a> ControlLoop for MeasureResistance<'a> {
 }
 
 impl IncomingFdcanFrame for MeasureResistanceCmd {
-    fn unpack(message: &FdcanMessage) -> Self {
+    fn unpack(message: FdcanMessage) -> Self {
         let buffer = message.data;
         MeasureResistanceCmd {
             duration: f32::from_bits(buffer[0]),

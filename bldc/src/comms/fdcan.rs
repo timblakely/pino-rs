@@ -106,10 +106,10 @@ pub struct Init {
 pub struct Running;
 
 pub struct Callback<'a> {
-    callback: Box<dyn for<'r> FnMut(&'r FdcanMessage) + 'a + Send>,
+    callback: Box<dyn FnMut(FdcanMessage) + 'a + Send>,
 }
 impl<'a> Callback<'a> {
-    pub fn run(&mut self, message: &'a FdcanMessage) {
+    pub fn run(&mut self, message: FdcanMessage) {
         (Self::as_scoped_mut(self).callback)(message)
     }
 
@@ -306,50 +306,41 @@ impl Fdcan<Init> {
     }
 }
 
+pub fn send_message(message: &impl OutgoingFdcanFrame) {
+    send_serialized_message(message.pack());
+}
+
+fn send_serialized_message(message: FdcanMessage) {
+    // Block interrupts, acquiring the shared hardware.
+    block_interrupts(FDCAN_INTERRUPTS, &SHARED_DEVICE, |mut shared| {
+        // TODO(blakely): Move to an actual TxFifo struct/impl
+        let tx_idx = shared.fdcan.txfqs.read().tfqpi().bits() as usize;
+        shared.sram.tx_buffers[tx_idx].assign(&message);
+        // Safety: No enum associated with this in stm32-rs. Bit field corresponds
+        // to which tx buffer is being used.
+        shared
+            .fdcan
+            .txbar
+            .modify(|_, w| unsafe { w.ar().bits(1 << tx_idx) });
+    });
+}
+
 impl Fdcan<Running> {
-    pub fn send_message(&mut self, message: &impl OutgoingFdcanFrame) {
-        self.send_serialized_message(message.pack());
-    }
-
-    fn send_serialized_message(&mut self, message: FdcanMessage) {
-        // Block interrupts, acquiring the shared hardware.
-        block_interrupts(FDCAN_INTERRUPTS, &SHARED_DEVICE, |mut shared| {
-            // TODO(blakely): Move to an actual TxFifo struct/impl
-            let tx_idx = shared.fdcan.txfqs.read().tfqpi().bits() as usize;
-            shared.sram.tx_buffers[tx_idx].assign(&message);
-            // Safety: No enum associated with this in stm32-rs. Bit field corresponds
-            // to which tx buffer is being used.
-            shared
-                .fdcan
-                .txbar
-                .modify(|_, w| unsafe { w.ar().bits(1 << tx_idx) });
-        });
-    }
-
     pub fn process_messages(&mut self) {
         // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 (Rx) from
         // firing - the only other interrupt that shares this particular buffer - ensuring
         // we aren't preempted when reading from it. This is fine in general since the
-        // peripheral itself has an internal buffer, and as long as we can clear the backlog
-        // before the peripheral receives 4 requests we should be good. Alternatively, we
-        // could just process a single message here to make sure that we only hold this lock
-        // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
-        // form though...
-        // block_interrupts(FDCAN_INTERRUPTS, &FDCAN_SHARE, |mut fdcan| {
-
-        // });
-        crate::util::interrupts::block_interrupts(
+        // peripheral itself has an internal buffer, but we don't want to block the interrupt for
+        // too long in case there's a torrent of incoming messages.
+        while let Some(message) = crate::util::interrupts::block_interrupts(
             FDCAN_INTERRUPTS,
             &FDCAN_RECEIVE_BUF,
-            |mut buf| {
-                while let Some(message) = buf.dequeue_ref() {
-                    // TODO(blakely): Combine FDCAN_RECEIVE_BUF and FDCAN_SHARE
-                    if let Some(handler) = self.handlers.get_mut(&message.id) {
-                        Callback::as_scoped_mut(handler).run(message);
-                    }
-                }
-            },
-        );
+            |mut buf| buf.dequeue(),
+        ) {
+            if let Some(handler) = self.handlers.get_mut(&message.id) {
+                Callback::as_scoped_mut(handler).run(message);
+            }
+        }
     }
 }
 
@@ -357,7 +348,7 @@ impl<T> Fdcan<T> {
     pub fn on<'a, M: IncomingFdcanFrame>(
         &mut self,
         message_id: u32,
-        mut callback: impl for<'r> FnMut(M) + 'a + Send,
+        mut callback: impl FnMut(M) + 'a + Send,
     ) {
         // There's a bit of subtlety here. The FDCAN peripheral is stored in a global static, safely
         // behind a lock. However because of that, anything stored _inside_ that lock also gets a
@@ -419,7 +410,7 @@ fn fdcan1_rx_isr() {
     shared.fdcan.ir.modify(|_, w| w.rf0n().set_bit());
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FdcanMessage {
     pub id: u32,
     pub data: [u32; 16],
@@ -460,7 +451,7 @@ fn init_buffer() -> &'static mut ReceiveBuffer {
 
 pub trait IncomingFdcanFrame {
     // Unpack the message from a buffer.
-    fn unpack(message: &FdcanMessage) -> Self;
+    fn unpack(message: FdcanMessage) -> Self;
 }
 
 pub trait OutgoingFdcanFrame {

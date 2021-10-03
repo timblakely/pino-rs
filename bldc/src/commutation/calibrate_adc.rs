@@ -60,7 +60,7 @@ impl<'a> ControlLoop for CalibrateADC<'a> {
 }
 
 impl IncomingFdcanFrame for CalibrateADCCmd {
-    fn unpack(message: &FdcanMessage) -> Self {
+    fn unpack(message: FdcanMessage) -> Self {
         let buffer = message.data;
         CalibrateADCCmd {
             duration: f32::from_bits(buffer[0]),

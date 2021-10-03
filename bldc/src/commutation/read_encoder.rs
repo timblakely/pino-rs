@@ -72,13 +72,13 @@ impl<'a> ControlLoop for ReadEncoder<'a> {
 pub struct ReadEncoderMsg {}
 
 impl IncomingFdcanFrame for ReadEncoderMsg {
-    fn unpack(_: &crate::comms::fdcan::FdcanMessage) -> Self {
+    fn unpack(_: FdcanMessage) -> Self {
         ReadEncoderMsg {}
     }
 }
 
 impl OutgoingFdcanFrame for EncoderResults {
-    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
+    fn pack(&self) -> FdcanMessage {
         FdcanMessage::new(
             Message::EncoderResults,
             &[

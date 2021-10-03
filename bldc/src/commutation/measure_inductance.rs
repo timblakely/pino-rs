@@ -183,7 +183,7 @@ impl<'a> ControlLoop for MeasureInductance<'a> {
 }
 
 impl IncomingFdcanFrame for MeasureInductanceCmd {
-    fn unpack(message: &FdcanMessage) -> Self {
+    fn unpack(message: FdcanMessage) -> Self {
         let buffer = message.data;
         MeasureInductanceCmd {
             duration: f32::from_bits(buffer[0]),

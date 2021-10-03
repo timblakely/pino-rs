@@ -3,8 +3,11 @@
 #![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::messages::Message,
-    commutation::{calibrate_adc::CalibrateADCCmd, calibrate_e_zero::CalibrateEZeroCmd},
+    comms::{fdcan, messages::Message},
+    commutation::{
+        calibrate_adc::CalibrateADCCmd,
+        calibrate_e_zero::{CalibrateEZeroCmd, EZeroMsg},
+    },
     driver,
 };
 
@@ -20,8 +23,12 @@ fn main() -> ! {
     let mut driver = driver::take_hardware().configure_peripherals().calibrate();
 
     driver.on(Message::CalibrateEZero, |_frame: CalibrateEZeroCmd| {
-        let mut _asdf = 1;
-        _asdf += 1;
+        fdcan::send_message(&EZeroMsg {
+            angle: 12.3,
+            angle_raw: 456,
+            e_angle: 0.789,
+            e_raw: 1337.,
+        })
     });
 
     driver.on(Message::CalibrateADC, |_frame: CalibrateADCCmd| {});

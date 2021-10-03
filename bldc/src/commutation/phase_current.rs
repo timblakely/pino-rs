@@ -27,7 +27,7 @@ pub struct PhaseCurrentCmd {
 }
 
 impl IncomingFdcanFrame for PhaseCurrentCmd {
-    fn unpack(message: &crate::comms::fdcan::FdcanMessage) -> Self {
+    fn unpack(message: FdcanMessage) -> Self {
         let buffer = message.data;
         PhaseCurrentCmd {
             duration: f32::from_bits(buffer[0]),

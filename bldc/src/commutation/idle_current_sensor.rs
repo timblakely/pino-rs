@@ -54,7 +54,7 @@ impl<'a> ControlLoop for IdleCurrentSensor<'a> {
 }
 
 impl IncomingFdcanFrame for IdleCurrentSenseCmd {
-    fn unpack(message: &FdcanMessage) -> Self {
+    fn unpack(message: FdcanMessage) -> Self {
         let buffer = message.data;
         IdleCurrentSenseCmd {
             duration: f32::from_bits(buffer[0]),

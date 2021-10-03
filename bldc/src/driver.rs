@@ -637,18 +637,6 @@ impl Driver<Init> {
                 .bits32()
         });
 
-        // // TODO(blakely): Move this into the commutation code.
-        // // Try it out
-        // // Note that the input to the CORDIC is theta/pi. Kinda nice in a way...
-        // let pi_over_3: I1F31 = I1F31::from_num(1f32 / 3f32);
-        // // Safety: Needs valid range in SVD. Supports full range of Q1.31 [-1,1-2^-31]
-        // cordic
-        //     .wdata
-        //     .write(|w| unsafe { w.bits(pi_over_3.to_bits() as u32) });
-        // block_until!(cordic.csr.read().rrdy().is_ready());
-        // let _cos: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
-        // let _sin: f32 = I1F31::from_bits(cordic.rdata.read().bits() as i32).to_num();
-
         *CONTROL_LOOP.lock() = Some(ControlLoopVars {
             control_loop: None,
             hw: ControlHardware {
@@ -700,7 +688,7 @@ impl Driver<Ready> {
         }
     }
 
-    pub fn on<'a, M>(&mut self, message: Message, callback: impl for<'r> FnMut(M) + 'a + Send)
+    pub fn on<'a, M>(&mut self, message: Message, callback: impl FnMut(M) + 'a + Send)
     where
         M: IncomingFdcanFrame,
     {
