@@ -1,9 +1,27 @@
 extern crate alloc;
 
+use crate::comms::{
+    fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
+    messages::Message,
+};
+
 use super::{ControlHardware, ControlLoop, LoopState};
 use alloc::boxed::Box;
 
 // Sample current one one phase for a period of time, building a histogram of currents.
+
+// Build a 16-bin distribution of current, one phase at a time.
+pub struct IdleCurrentDistributionCmd {
+    pub duration: f32,
+    pub center_current: f32,
+    pub current_range: f32,
+    pub phase: u8,
+}
+
+// Response to IdleCurrentDistributionCmd
+pub struct CurrentDistribution<'a> {
+    pub bins: &'a [u32; 16],
+}
 
 enum Phase {
     A,
@@ -72,5 +90,23 @@ impl<'a> ControlLoop for IdleCurrentDistribution<'a> {
 
     fn finished(&mut self) {
         (self.callback)(&self.bins);
+    }
+}
+
+impl IncomingFdcanFrame for IdleCurrentDistributionCmd {
+    fn unpack(message: &FdcanMessage) -> Self {
+        let buffer = message.data;
+        IdleCurrentDistributionCmd {
+            duration: f32::from_bits(buffer[0]),
+            center_current: f32::from_bits(buffer[1]),
+            current_range: f32::from_bits(buffer[2]),
+            phase: buffer[3] as u8 & 0xFF,
+        }
+    }
+}
+
+impl<'a> OutgoingFdcanFrame for CurrentDistribution<'a> {
+    fn pack(&self) -> FdcanMessage {
+        FdcanMessage::new(Message::CurrentDistribution, self.bins)
     }
 }

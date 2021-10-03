@@ -17,7 +17,7 @@ use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
-use super::messages::{IncomingFdcanFrame, OutgoingFdcanFrame};
+use super::messages::Message;
 
 pub mod extended_filter;
 pub mod rx_fifo;
@@ -333,6 +333,11 @@ impl Fdcan<Running> {
         message_id: u32,
         mut callback: impl for<'r> FnMut(M) + 'a + Send,
     ) {
+        // There's a bit of subtlety here. The FDCAN peripheral is stored in a global static, safely
+        // behind a lock. However because of that, anything stored _inside_ that lock also gets a
+        // `'static` lifetime. There's just no way around that; it's baked into borrowck. So we have
+        // to _\*shudder\*_ use `core::mem::transmute` to magic-away the finite lifetime of the
+        // callback. That appears to be okay though, since the callback is then stored in a
         self.handlers
             .insert(
                 message_id,
@@ -396,11 +401,11 @@ pub struct FdcanMessage {
 }
 
 impl FdcanMessage {
-    pub fn new<const T: usize>(id: u32, data: &[u32; T]) -> FdcanMessage {
+    pub fn new<const T: usize>(message: Message, data: &[u32; T]) -> FdcanMessage {
         // There's no real idiomatic way to zero-initialize-and-fill-in-up-to-length in Rust as of
         // Aug '21.
         let mut message = FdcanMessage {
-            id,
+            id: message as u32,
             data: [0; 16],
             size: T as u8,
         };
@@ -429,6 +434,17 @@ fn init_buffer() -> &'static mut ReceiveBuffer {
 
 pub fn init_receive_buf() {
     *FDCAN_RECEIVE_BUF.try_lock().unwrap() = Some(init_buffer());
+}
+
+pub trait IncomingFdcanFrame {
+    // Unpack the message from a buffer.
+    fn unpack(message: &FdcanMessage) -> Self;
+}
+
+pub trait OutgoingFdcanFrame {
+    // Pack the message into a buffer of up to 64 bytes, returning the number of bytes that were
+    // packed.
+    fn pack(&self) -> FdcanMessage;
 }
 
 #[interrupt]

@@ -1,7 +1,13 @@
 extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::current_sensing::PhaseCurrents;
+use crate::{
+    comms::{
+        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
+        messages::Message,
+    },
+    current_sensing::PhaseCurrents,
+};
 use alloc::boxed::Box;
 
 // Drive a zero-centered square wave through the phases, which should result in a triangle wave of
@@ -16,6 +22,18 @@ use alloc::boxed::Box;
 // now :)
 const MAX_PWM_DUTY_CYCLE: f32 = 0.15;
 const MIN_SQUARE_WAVE_FREQ: u32 = 5000;
+
+// Measure the inductance of the windings
+pub struct MeasureInductanceCmd {
+    pub duration: f32,
+    pub frequency: u32,
+    pub pwm_duty: f32,
+    pub sample_pwm_percent: f32,
+}
+// Return value for inductances
+pub struct Inductances<'a> {
+    pub inductances: &'a [f32; 3],
+}
 
 enum Direction {
     Up,
@@ -161,5 +179,30 @@ impl<'a> ControlLoop for MeasureInductance<'a> {
             v_ref / (self.sample.phase_c / dt),
         ];
         (self.callback)(inductances);
+    }
+}
+
+impl IncomingFdcanFrame for MeasureInductanceCmd {
+    fn unpack(message: &FdcanMessage) -> Self {
+        let buffer = message.data;
+        MeasureInductanceCmd {
+            duration: f32::from_bits(buffer[0]),
+            frequency: buffer[1],
+            pwm_duty: f32::from_bits(buffer[2]),
+            sample_pwm_percent: f32::from_bits(buffer[3]),
+        }
+    }
+}
+
+impl<'a> OutgoingFdcanFrame for Inductances<'a> {
+    fn pack(&self) -> FdcanMessage {
+        FdcanMessage::new(
+            Message::Inductances,
+            &[
+                self.inductances[0].to_bits(),
+                self.inductances[1].to_bits(),
+                self.inductances[2].to_bits(),
+            ],
+        )
     }
 }

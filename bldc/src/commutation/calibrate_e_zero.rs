@@ -3,8 +3,8 @@ extern crate alloc;
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
     comms::{
-        fdcan::FdcanMessage,
-        messages::{IncomingFdcanFrame, OutgoingFdcanFrame},
+        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
+        messages::Message,
     },
     current_sensing::PhaseCurrents,
     led::Led,
@@ -230,15 +230,15 @@ impl<'a> ControlLoop for CalibrateEZero<'a> {
     }
 }
 
-pub struct CalibrateEZeroMsg {
+pub struct CalibrateEZeroCmd {
     pub duration: f32,
     pub currents: DQCurrents,
 }
 
-impl IncomingFdcanFrame for CalibrateEZeroMsg {
+impl IncomingFdcanFrame for CalibrateEZeroCmd {
     fn unpack(message: &crate::comms::fdcan::FdcanMessage) -> Self {
         let buffer = message.data;
-        CalibrateEZeroMsg {
+        CalibrateEZeroCmd {
             duration: f32::from_bits(buffer[0]),
             currents: DQCurrents {
                 q: f32::from_bits(buffer[1]),
@@ -258,7 +258,7 @@ pub struct EZeroMsg {
 impl<'a> OutgoingFdcanFrame for EZeroMsg {
     fn pack(&self) -> FdcanMessage {
         FdcanMessage::new(
-            0x15,
+            Message::EZero,
             &[
                 self.angle.to_bits(),
                 self.angle_raw,

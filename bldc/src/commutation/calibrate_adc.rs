@@ -1,32 +1,31 @@
 extern crate alloc;
+use alloc::boxed::Box;
 
-use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame},
     current_sensing::PhaseCurrents,
 };
-use alloc::boxed::Box;
 
-// Current sense for a given duration.
-pub struct IdleCurrentSenseCmd {
+use super::{ControlHardware, ControlLoop, LoopState};
+
+// Calibrate ADC values.
+pub struct CalibrateADCCmd {
     pub duration: f32,
 }
 
-// During commutation, no PWM is performed. The current is sampled once at each loop for a given
-// duration then averaged across all samples.
-pub struct IdleCurrentSensor<'a> {
+pub struct CalibrateADC<'a> {
     total_counts: u32,
     loop_count: u32,
     sample: PhaseCurrents,
     callback: Box<dyn for<'r> FnMut(&'r PhaseCurrents) + 'a + Send>,
 }
 
-impl<'a> IdleCurrentSensor<'a> {
+impl<'a> CalibrateADC<'a> {
     pub fn new(
         duration: f32,
         callback: impl for<'r> FnMut(&'r PhaseCurrents) + 'a + Send,
-    ) -> IdleCurrentSensor<'a> {
-        IdleCurrentSensor {
+    ) -> CalibrateADC<'a> {
+        CalibrateADC {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             sample: PhaseCurrents::new(),
@@ -35,28 +34,35 @@ impl<'a> IdleCurrentSensor<'a> {
     }
 }
 
-impl<'a> ControlLoop for IdleCurrentSensor<'a> {
+impl<'a> ControlLoop for CalibrateADC<'a> {
     fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
         self.loop_count += 1;
-        let current_sensor = &hardware.current_sensor;
-        self.sample += current_sensor.sample();
+        let current_sensor = &mut hardware.current_sensor;
+        self.sample += current_sensor.sample_raw();
 
         match self.loop_count {
-            x if x >= self.total_counts => LoopState::Finished,
+            x if x >= self.total_counts => {
+                self.sample /= self.loop_count;
+                current_sensor.set_calibration(
+                    self.sample.phase_a,
+                    self.sample.phase_b,
+                    self.sample.phase_c,
+                );
+                LoopState::Finished
+            }
             _ => LoopState::Running,
         }
     }
 
     fn finished(&mut self) {
-        self.sample /= self.loop_count;
         (self.callback)(&self.sample);
     }
 }
 
-impl IncomingFdcanFrame for IdleCurrentSenseCmd {
+impl IncomingFdcanFrame for CalibrateADCCmd {
     fn unpack(message: &FdcanMessage) -> Self {
         let buffer = message.data;
-        IdleCurrentSenseCmd {
+        CalibrateADCCmd {
             duration: f32::from_bits(buffer[0]),
         }
     }

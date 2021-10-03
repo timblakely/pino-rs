@@ -1,14 +1,14 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use crate::comms::fdcan::{Fdcan, FdcanMessage, Running, FDCAN_INTERRUPTS};
-use crate::comms::messages::IncomingFdcanFrame;
-use crate::commutation::{
-    CalibrateADC, Commutator, ControlHardware, ControlLoopVars, CONTROL_LOOP,
-};
+use crate::comms::fdcan::{IncomingFdcanFrame, FDCAN_INTERRUPTS};
+use crate::comms::messages::Message;
+use crate::commutation::calibrate_adc::CalibrateADC;
+use crate::commutation::{Commutator, ControlHardware, ControlLoopVars, CONTROL_LOOP};
 use crate::cordic::Cordic;
 use crate::current_sensing;
 use crate::encoder::Encoder;
 use crate::memory::initialize_heap;
+use crate::util::interrupts::block_interrupts;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
@@ -690,9 +690,8 @@ impl Driver<Calibrating> {
     }
 }
 
-// TODO(blakely): implement Controller<Silent> for the state prior to comms setup.
 impl Driver<Ready> {
-    pub fn listen(self, mut comms_handler: impl FnMut(&mut Fdcan<Running>, &FdcanMessage)) {
+    pub fn listen(self) -> ! {
         Commutator::enable_loop();
 
         loop {
@@ -704,27 +703,18 @@ impl Driver<Ready> {
             // could just process a single message here to make sure that we only hold this lock
             // for the absolute minimum time, since there's an internal buffer in the FDCAN. Bad
             // form though...
-            crate::util::interrupts::block_interrupts(
-                FDCAN_INTERRUPTS,
-                &FDCAN_SHARE,
-                |mut fdcan| {
-                    fdcan.process_messages();
-                },
-            );
+            block_interrupts(FDCAN_INTERRUPTS, &FDCAN_SHARE, |mut fdcan| {
+                fdcan.process_messages();
+            });
         }
     }
 
-    pub fn on<'a, M: IncomingFdcanFrame>(
-        &self,
-        message_id: u32,
-        callback: impl for<'r> FnMut(M) + 'a + Send,
-    ) {
-        crate::util::interrupts::block_interrupts(
-            FDCAN_INTERRUPTS,
-            &FDCAN_SHARE,
-            move |mut fdcan| {
-                fdcan.on(message_id, callback);
-            },
-        );
+    pub fn on<'a, M>(&self, message: Message, callback: impl for<'r> FnMut(M) + 'a + Send)
+    where
+        M: IncomingFdcanFrame,
+    {
+        block_interrupts(FDCAN_INTERRUPTS, &FDCAN_SHARE, move |mut fdcan| {
+            fdcan.on(message as u32, callback);
+        });
     }
 }

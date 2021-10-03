@@ -1,8 +1,8 @@
 extern crate alloc;
 
 use crate::comms::{
-    fdcan::FdcanMessage,
-    messages::{IncomingFdcanFrame, OutgoingFdcanFrame},
+    fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
+    messages::Message,
 };
 
 use super::{ControlHardware, ControlLoop, LoopState};
@@ -80,7 +80,7 @@ impl IncomingFdcanFrame for ReadEncoderMsg {
 impl OutgoingFdcanFrame for EncoderResults {
     fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
         FdcanMessage::new(
-            0x13,
+            Message::EncoderResults,
             &[
                 self.angle.to_bits(),
                 self.velocity.to_bits(),

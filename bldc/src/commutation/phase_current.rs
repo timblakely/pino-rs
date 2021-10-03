@@ -1,7 +1,14 @@
 extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::{comms::messages::IncomingFdcanFrame, pi_controller::PIController};
+use crate::{
+    comms::{
+        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
+        messages::Message,
+    },
+    current_sensing::PhaseCurrents,
+    pi_controller::PIController,
+};
 
 // Control current for a single phase.
 
@@ -11,7 +18,7 @@ pub enum Phase {
     C,
 }
 
-pub struct PhaseCurrentCommand {
+pub struct PhaseCurrentCmd {
     pub target_current: f32,
     pub duration: f32,
     pub k: f32,
@@ -19,10 +26,10 @@ pub struct PhaseCurrentCommand {
     pub phase: Phase,
 }
 
-impl IncomingFdcanFrame for PhaseCurrentCommand {
+impl IncomingFdcanFrame for PhaseCurrentCmd {
     fn unpack(message: &crate::comms::fdcan::FdcanMessage) -> Self {
         let buffer = message.data;
-        PhaseCurrentCommand {
+        PhaseCurrentCmd {
             duration: f32::from_bits(buffer[0]),
             target_current: f32::from_bits(buffer[1]),
             k: f32::from_bits(buffer[2]),
@@ -134,5 +141,18 @@ impl ControlLoop for PhaseCurrent {
 
     fn finished(&mut self) {
         let _asdf = self.loop_count;
+    }
+}
+
+impl OutgoingFdcanFrame for PhaseCurrents {
+    fn pack(&self) -> FdcanMessage {
+        FdcanMessage::new(
+            Message::PhaseCurrents,
+            &[
+                self.phase_a.to_bits(),
+                self.phase_b.to_bits(),
+                self.phase_c.to_bits(),
+            ],
+        )
     }
 }

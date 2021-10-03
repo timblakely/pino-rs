@@ -2,7 +2,10 @@ extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::{fdcan::FdcanMessage, messages::OutgoingFdcanFrame},
+    comms::{
+        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
+        messages::Message,
+    },
     current_sensing::PhaseCurrents,
 };
 use alloc::boxed::Box;
@@ -15,6 +18,13 @@ use alloc::boxed::Box;
 // are rated for 8A continuous and would very likely be able to handle much more for brief periods,
 // but I ***really*** don't want to fry anything right now :)
 const MAX_PWM_DUTY_CYCLE: f32 = 0.08;
+
+// Measure the resistance of the windings.
+pub struct MeasureResistanceCmd {
+    pub duration: f32,
+    pub target_voltage: f32,
+    pub phase: crate::commutation::measure_resistance::Phase,
+}
 
 pub enum Phase {
     A,
@@ -58,12 +68,6 @@ impl<'a> MeasureResistance<'a> {
 
 pub struct Resistance {
     resistance: f32,
-}
-
-impl OutgoingFdcanFrame for Resistance {
-    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
-        FdcanMessage::new(0x12, &[self.resistance.to_bits()])
-    }
 }
 
 impl<'a> ControlLoop for MeasureResistance<'a> {
@@ -123,5 +127,27 @@ impl<'a> ControlLoop for MeasureResistance<'a> {
                 Phase::C => self.current.phase_c,
             };
         (self.callback)(&Resistance { resistance });
+    }
+}
+
+impl IncomingFdcanFrame for MeasureResistanceCmd {
+    fn unpack(message: &FdcanMessage) -> Self {
+        let buffer = message.data;
+        MeasureResistanceCmd {
+            duration: f32::from_bits(buffer[0]),
+            target_voltage: f32::from_bits(buffer[1]),
+
+            phase: match buffer[2] & 0xFFu32 {
+                0 => crate::commutation::measure_resistance::Phase::A,
+                1 => crate::commutation::measure_resistance::Phase::B,
+                _ => crate::commutation::measure_resistance::Phase::C,
+            },
+        }
+    }
+}
+
+impl OutgoingFdcanFrame for Resistance {
+    fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
+        FdcanMessage::new(Message::Resistance, &[self.resistance.to_bits()])
     }
 }
