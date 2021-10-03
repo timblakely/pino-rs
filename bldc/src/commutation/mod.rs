@@ -59,5 +59,5 @@ pub enum LoopState {
 // Trait that any control loops need to implement.
 pub trait ControlLoop: Send {
     fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState;
-    fn finished(&mut self) {}
+    fn finished(&mut self);
 }
