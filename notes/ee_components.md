@@ -21,6 +21,11 @@ pigtails](http://www.digikey.com/product-search/en/cable-assemblies/coaxial-cabl
 
 [Newark](https://www.newark.com/stmicroelectronics/stm32h735vgt6/mcu-32bit-550mhz-lqfp-100-rohs/dp/89AH1358?st=stm32h7) has the 35 coming in November for $15.79@10+.
 
+# Drivers
+
+[MCF8316A](https://www.ti.com/product/MCF8316A#features) from TI
+- Complete FoC (but sensorless) in a tiny package. _Includes FETs!_
+
 # FETs
 
 TI's [CSD88599Q5DC](https://www.ti.com/product/CSD88599Q5DC) are two 60V FETs in a single package.
