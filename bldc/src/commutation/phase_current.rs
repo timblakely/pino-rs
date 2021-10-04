@@ -1,5 +1,4 @@
 extern crate alloc;
-
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
     comms::{
@@ -9,6 +8,7 @@ use crate::{
     current_sensing::PhaseCurrents,
     pi_controller::PIController,
 };
+use num_traits::float::FloatCore;
 
 // Control current for a single phase.
 
@@ -40,16 +40,6 @@ impl IncomingFdcanFrame for PhaseCurrentCmd {
                 _ => Phase::C,
             },
         }
-    }
-}
-
-pub trait BitwiseAbs {
-    fn abs(&self) -> f32;
-}
-
-impl BitwiseAbs for f32 {
-    fn abs(&self) -> f32 {
-        f32::from_bits((*self).to_bits() & (u32::MAX >> 1))
     }
 }
 

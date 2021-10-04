@@ -14,3 +14,5 @@ pub mod ic;
 pub mod led;
 pub mod memory;
 pub mod pi_controller;
+pub mod pwm;
+pub mod timer;

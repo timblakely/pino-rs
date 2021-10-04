@@ -129,6 +129,7 @@ dependencies = [
  "cortex-m-semihosting",
  "fixed",
  "heapless",
+ "num-traits",
  "panic-itm",
  "paste",
  "ringbuffer",

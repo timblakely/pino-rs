@@ -1,5 +1,9 @@
 use super::{ControlHardware, ControlLoop, LoopState};
-use crate::{current_sensing::PhaseCurrents, pi_controller::PIController};
+use crate::{
+    current_sensing::PhaseCurrents,
+    pi_controller::PIController,
+    pwm::{PhaseVoltages, PwmDuty},
+};
 
 // Field-oriented control. Very basic Park/Clark forward and inverse. Currently no SVM is performed,
 // and only a single i_q/i_d value is accepted S
@@ -21,17 +25,6 @@ pub struct DQCurrents {
 struct DQVoltages {
     q: f32,
     d: f32,
-}
-
-struct PhaseVoltages {
-    a: f32,
-    b: f32,
-    c: f32,
-}
-struct PhaseDuty {
-    a: f32,
-    b: f32,
-    c: f32,
 }
 
 pub struct FieldOrientedControl {
@@ -86,7 +79,7 @@ fn inverse_park_clark(dq_voltages: DQVoltages, cos: f32, sin: f32) -> PhaseVolta
     PhaseVoltages { a, b, c }
 }
 
-fn _space_vector_modulation(v_ref: f32, phase_voltages: PhaseVoltages) -> PhaseDuty {
+fn _space_vector_modulation(v_ref: f32, phase_voltages: PhaseVoltages) -> PwmDuty {
     let PhaseVoltages {
         a: a_raw,
         b: b_raw,
@@ -106,7 +99,7 @@ fn _space_vector_modulation(v_ref: f32, phase_voltages: PhaseVoltages) -> PhaseD
     let c = (0.5 * (c_raw - v_offset) / v_ref + pwm_offset)
         .max(0.)
         .min(0.94);
-    PhaseDuty { a, b, c }
+    PwmDuty { a, b, c }
 }
 
 impl ControlLoop for FieldOrientedControl {
@@ -149,12 +142,12 @@ impl ControlLoop for FieldOrientedControl {
         let tim1 = &hardware.tim1;
 
         let pwms = match PWM_INVERT {
-            false => PhaseDuty {
+            false => PwmDuty {
                 a: new_voltages.a / v_bus * 0.5 + 0.5,
                 b: new_voltages.b / v_bus * 0.5 + 0.5,
                 c: new_voltages.c / v_bus * 0.5 + 0.5,
             },
-            true => PhaseDuty {
+            true => PwmDuty {
                 a: -new_voltages.a / v_bus * 0.5 + 0.5,
                 b: -new_voltages.b / v_bus * 0.5 + 0.5,
                 c: -new_voltages.c / v_bus * 0.5 + 0.5,
