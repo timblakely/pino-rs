@@ -11,7 +11,7 @@ use alloc::boxed::Box;
 
 pub mod calibrate_adc;
 pub mod calibrate_e_zero;
-pub mod field_oriented_control;
+pub mod torque_control;
 pub mod idle_current_distribution;
 pub mod idle_current_sensor;
 pub mod interrupt;
@@ -69,6 +69,7 @@ impl Commutator {
         );
     }
 
+    // TODO(blakely): Don't disable the loop until currents have settled down low enough.
     pub fn disable_loop() {
         block_interrupt(
             device::interrupt::ADC1_2,

@@ -11,6 +11,7 @@ pub enum Message {
     Inductances = 0x14,
     CalibrateEZero = 0x15,
     EZero = 0x16,
+    TorqueControl = 0x17,
 }
 
 // impl Messages {

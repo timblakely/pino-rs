@@ -3,10 +3,10 @@
 #![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::{fdcan, messages::Message},
+    comms::messages::Message,
     commutation::{
         calibrate_adc::CalibrateADCCmd,
-        calibrate_e_zero::{CalibrateEZero, CalibrateEZeroCmd, EZeroMsg},
+        torque_control::{TorqueControl, TorqueControlCmd},
         Commutator,
     },
     driver,
@@ -23,15 +23,8 @@ fn main() -> ! {
     // Acquire the driver.
     let mut driver = driver::take_hardware().configure_peripherals().calibrate();
 
-    driver.on(Message::CalibrateEZero, |cmd: CalibrateEZeroCmd| {
-        Commutator::set(CalibrateEZero::new(cmd.duration, cmd.currents, |_| {
-            fdcan::send_message(&EZeroMsg {
-                angle: 12.3,
-                angle_raw: 456,
-                e_angle: 0.789,
-                e_raw: 1337.,
-            })
-        }))
+    driver.on(Message::TorqueControl, |cmd: TorqueControlCmd| {
+        Commutator::set(TorqueControl::new(cmd.duration, cmd.currents))
     });
 
     driver.on(Message::CalibrateADC, |_frame: CalibrateADCCmd| {});
