@@ -3,6 +3,7 @@ use crate::{
     current_sensing::{CurrentSensor, PhaseCurrents, Ready},
     encoder::Encoder,
     pi_controller::PIController,
+    pwm::PhaseVoltages,
 };
 
 // Field-oriented control. Very basic Park/Clark forward and inverse. Currently no SVM is performed,
@@ -26,29 +27,6 @@ pub struct DQCurrents {
 struct DQVoltages {
     q: f32,
     d: f32,
-}
-
-pub struct PhaseVoltages {
-    a: f32,
-    b: f32,
-    c: f32,
-}
-
-impl PhaseVoltages {
-    pub fn as_pwm(&self, v_bus: f32, invert_pwm: bool) -> PhaseDuty {
-        match invert_pwm {
-            false => PhaseDuty {
-                a: self.a / v_bus * 0.5 + 0.5,
-                b: self.b / v_bus * 0.5 + 0.5,
-                c: self.c / v_bus * 0.5 + 0.5,
-            },
-            true => PhaseDuty {
-                a: -self.a / v_bus * 0.5 + 0.5,
-                b: -self.b / v_bus * 0.5 + 0.5,
-                c: -self.c / v_bus * 0.5 + 0.5,
-            },
-        }
-    }
 }
 
 fn forward_park_clark(phase_currents: PhaseCurrents, cos: f32, sin: f32) -> DQCurrents {

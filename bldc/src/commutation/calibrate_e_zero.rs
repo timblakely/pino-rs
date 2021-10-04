@@ -19,7 +19,6 @@ use alloc::boxed::Box;
 const DT: f32 = 1. / 40_000.;
 const _MIN_PWM_VALUE: f32 = 0.;
 const _MAX_PWM_VALUE: f32 = 2125.;
-const PWM_INVERT: bool = true;
 
 pub struct CalibrateEZero<'a> {
     foc: FieldOrientedControlImpl,
@@ -68,23 +67,15 @@ impl<'a> ControlLoop for CalibrateEZero<'a> {
         Led::<crate::led::Red>::on_while(|| {
             // Get the current rail voltage.
             let v_bus = hardware.current_sensor.v_bus();
-            let tim1 = &hardware.tim1;
 
             // Calculate the required PWM values via field oriented control.
-            let pwms = self
-                .foc
-                .update(
-                    &hardware.current_sensor,
-                    &hardware.encoder,
-                    &mut hardware.cordic,
-                    DT,
-                )
-                .as_pwm(v_bus, PWM_INVERT);
-
-            // Set PWM values
-            tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
-            tim1.ccr2.write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
-            tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
+            let phase_voltages = self.foc.update(
+                &hardware.current_sensor,
+                &hardware.encoder,
+                &mut hardware.cordic,
+                DT,
+            );
+            hardware.pwm.set_voltages(v_bus, phase_voltages);
 
             self.loop_count += 1;
             match self.loop_count {

@@ -7,6 +7,7 @@ use crate::{
         messages::Message,
     },
     current_sensing::PhaseCurrents,
+    pwm::PwmDuty,
 };
 use alloc::boxed::Box;
 
@@ -52,7 +53,6 @@ pub struct MeasureInductance<'a> {
     remainder: f32,
     last_sample: Option<PhaseCurrents>,
     pwm_duty: f32,
-    pwm_ccr: u16,
     sample_pwm_ccr: u16,
 
     callback: Box<dyn FnMut([f32; 3]) + 'a + Send>,
@@ -87,7 +87,6 @@ impl<'a> MeasureInductance<'a> {
             remainder: 0.,
             last_sample: None,
             pwm_duty,
-            pwm_ccr,
             sample_pwm_ccr: (((2125 - pwm_ccr) as f32 * sample_pwm_percent) as u16 + 1).max(2124),
 
             callback: Box::new(callback),
@@ -119,35 +118,30 @@ impl<'a> ControlLoop for MeasureInductance<'a> {
         self.switch_count += 1;
 
         let count_and_remainder: f32 = self.switch_count as f32 + self.remainder;
-        hardware
-            .tim1
-            .ccr4
-            .write(|w| w.ccr4().bits(self.sample_pwm_ccr));
+        let pwm = &mut hardware.pwm;
+
+        pwm.set_sample_ccr(self.sample_pwm_ccr);
+
         if count_and_remainder >= self.loops_per_switch {
             self.switch_count = 0;
             self.switches += 1;
             self.remainder = count_and_remainder - self.loops_per_switch;
             self.direction = match self.direction {
                 Direction::Up => {
-                    hardware
-                        .tim1
-                        .ccr1
-                        .write(|w| w.ccr1().bits(self.pwm_ccr as u16));
-                    hardware.tim1.ccr2.write(|w| w.ccr2().bits(0));
-                    hardware.tim1.ccr3.write(|w| w.ccr3().bits(0));
+                    pwm.set_pwm_duty_cycles(PwmDuty {
+                        a: self.pwm_duty,
+                        b: 0.,
+                        c: 0.,
+                    });
                     self.switches += 1;
                     Direction::Down
                 }
                 Direction::Down => {
-                    hardware.tim1.ccr1.write(|w| w.ccr1().bits(0));
-                    hardware
-                        .tim1
-                        .ccr2
-                        .write(|w| w.ccr2().bits(self.pwm_ccr as u16));
-                    hardware
-                        .tim1
-                        .ccr3
-                        .write(|w| w.ccr3().bits(self.pwm_ccr as u16));
+                    pwm.set_pwm_duty_cycles(PwmDuty {
+                        a: 0.,
+                        b: self.pwm_duty,
+                        c: self.pwm_duty,
+                    });
                     self.switches += 1;
                     Direction::Up
                 }
@@ -157,10 +151,8 @@ impl<'a> ControlLoop for MeasureInductance<'a> {
         self.loop_count += 1;
         match self.loop_count {
             x if x >= self.total_counts => {
-                hardware.tim1.ccr1.write(|w| w.ccr1().bits(0));
-                hardware.tim1.ccr2.write(|w| w.ccr2().bits(0));
-                hardware.tim1.ccr3.write(|w| w.ccr3().bits(0));
-                hardware.tim1.ccr4.write(|w| w.ccr4().bits(2124));
+                pwm.zero_phases();
+                pwm.reset_current_sample();
                 LoopState::Finished
             }
             _ => LoopState::Running,

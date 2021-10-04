@@ -2,6 +2,7 @@ use crate::{
     cordic::Cordic,
     current_sensing::{self, CurrentSensor},
     encoder::Encoder,
+    pwm::PwmOutput,
     util::interrupts::block_interrupt,
 };
 use stm32g4::stm32g474 as device;
@@ -26,7 +27,7 @@ use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 pub struct ControlHardware {
     pub current_sensor: CurrentSensor<current_sensing::Ready>,
-    pub tim1: device::TIM1,
+    pub pwm: PwmOutput,
     pub encoder: Encoder,
     pub cordic: Cordic,
 }
@@ -59,26 +60,23 @@ impl Commutator {
     }
 
     pub fn enable_loop() {
-        block_interrupt(device::interrupt::ADC1_2, &CONTROL_LOOP, |control_vars| {
-            let hw = &control_vars.hw;
-            // Kick off the timer.
-            hw.tim1.cr1.modify(|_, w| w.cen().set_bit());
-            // Now that the timer has started, enable the main output to allow current on the pins. If
-            // we do this before we enable the timer, we have the potential to get into a state where the
-            // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
-            // current through any high phases to any low phases.
-            hw.tim1.bdtr.modify(|_, w| w.moe().set_bit());
-        });
+        block_interrupt(
+            device::interrupt::ADC1_2,
+            &CONTROL_LOOP,
+            |mut control_vars| {
+                control_vars.hw.pwm.enable_loop();
+            },
+        );
     }
 
     pub fn disable_loop() {
-        block_interrupt(device::interrupt::ADC1_2, &CONTROL_LOOP, |control_vars| {
-            let hw = &control_vars.hw;
-            // Disable main output.
-            hw.tim1.bdtr.modify(|_, w| w.moe().clear_bit());
-            // Disable the timer completely.
-            hw.tim1.cr1.modify(|_, w| w.cen().clear_bit());
-        });
+        block_interrupt(
+            device::interrupt::ADC1_2,
+            &CONTROL_LOOP,
+            |mut control_vars| {
+                control_vars.hw.pwm.disable_loop();
+            },
+        );
     }
 }
 

@@ -14,6 +14,23 @@ pub struct PhaseVoltages {
     pub c: f32,
 }
 
+impl PhaseVoltages {
+    pub fn as_pwm(&self, v_bus: f32, invert_pwm: bool) -> PwmDuty {
+        match invert_pwm {
+            false => PwmDuty {
+                a: self.a / v_bus * 0.5 + 0.5,
+                b: self.b / v_bus * 0.5 + 0.5,
+                c: self.c / v_bus * 0.5 + 0.5,
+            },
+            true => PwmDuty {
+                a: -self.a / v_bus * 0.5 + 0.5,
+                b: -self.b / v_bus * 0.5 + 0.5,
+                c: -self.c / v_bus * 0.5 + 0.5,
+            },
+        }
+    }
+}
+
 pub struct PwmOutput {
     timer: device::TIM1,
     invert: bool,
@@ -27,7 +44,7 @@ impl PwmOutput {
         }
     }
 
-    pub fn configure(&mut self, config: TimerConfig) {
+    pub fn configure(mut self, config: TimerConfig) -> Self {
         // Configure TIM1 for control loop (actual timer frequency is double, since up + down = 1
         // full cycle).
         let tim1 = &self.timer;
@@ -128,18 +145,12 @@ impl PwmOutput {
         tim1.ccr2.write(|w| w.ccr2().bits(0));
         tim1.ccr3.write(|w| w.ccr3().bits(0));
 
-        // Set channel 4 to trigger _just_ before the midway point.
-        tim1.ccr4.write(|w| w.ccr4().bits(2124));
         // Set ch5 to PWM mode and enable it.
         // Safety: Upstream: needs enum values. PWM mode 1 is 0110.
         tim1.ccmr3_output
             .modify(|_, w| unsafe { w.oc5m().bits(110).oc5m_bit3().bits(0) });
 
-        // Configure channels 1-3 to be logical AND'd with channel 5, and set its capture compare
-        // value.
-        // Safety: Upstream: needs range to be explicitly set for safety.
-        // TODO(blakely): Set this CCR to a logical safe PWM duty (min deadtime 400ns = 98.4% duty
-        // cycle at 40kHz)
+        // Configure channels 1-3 to be logical AND'd with channel 5;
         tim1.ccr5.modify(|_, w| unsafe {
             w.gc5c1()
                 .set_bit()
@@ -150,6 +161,12 @@ impl PwmOutput {
                 .ccr5()
                 .bits(2083)
         });
+        // Set channel 4 to trigger _just_ before the midway point.
+        self.reset_current_sample();
+        // TODO(blakely): Set this CCR to a logical safe PWM duty (min deadtime 400ns = 98.4% duty
+        // cycle at 40kHz)
+        self.reset_deadtime();
+        self
     }
 
     pub fn set_pwm_duty_cycles(&mut self, pwms: PwmDuty) {
@@ -166,18 +183,47 @@ impl PwmOutput {
     }
 
     pub fn set_voltages(&mut self, v_bus: f32, voltages: PhaseVoltages) {
-        let pwms = match self.invert {
-            false => PwmDuty {
-                a: voltages.a / v_bus * 0.5 + 0.5,
-                b: voltages.b / v_bus * 0.5 + 0.5,
-                c: voltages.c / v_bus * 0.5 + 0.5,
-            },
-            true => PwmDuty {
-                a: -voltages.a / v_bus * 0.5 + 0.5,
-                b: -voltages.b / v_bus * 0.5 + 0.5,
-                c: -voltages.c / v_bus * 0.5 + 0.5,
-            },
-        };
-        self.set_pwm_duty_cycles(pwms);
+        self.set_pwm_duty_cycles(voltages.as_pwm(v_bus, self.invert));
+    }
+
+    // TODO(blakely): Don't expose ccr here.
+    pub fn set_sample_ccr(&mut self, ccr: u16) {
+        self.timer.ccr4.write(|w| w.ccr4().bits(ccr));
+    }
+
+    pub fn reset_current_sample(&mut self) {
+        self.set_sample_ccr(2124);
+    }
+
+    pub fn reset_deadtime(&mut self) {
+        // TODO(blakely): Set this CCR to a logical safe PWM duty (min deadtime 400ns = 98.4% duty
+        // cycle at 40kHz)
+        // Safety: Upstream: needs range to be explicitly set for safety.
+        self.timer.ccr5.write(|w| unsafe { w.ccr5().bits(2083) });
+    }
+
+    pub fn enable_loop(&mut self) {
+        // Kick off the timer.
+        self.timer.cr1.modify(|_, w| w.cen().set_bit());
+        // Now that the timer has started, enable the main output to allow current on the pins. If
+        // we do this before we enable the timer, we have the potential to get into a state where the
+        // PWM pins are in an active state but the timer isn't running, potentially drawing tons of
+        // current through any high phases to any low phases.
+        self.timer.bdtr.modify(|_, w| w.moe().set_bit());
+    }
+
+    pub fn disable_loop(&mut self) {
+        // Disable main output.
+        self.timer.bdtr.modify(|_, w| w.moe().clear_bit());
+        // Disable the timer completely.
+        self.timer.cr1.modify(|_, w| w.cen().clear_bit());
+    }
+
+    pub fn zero_phases(&mut self) {
+        self.set_pwm_duty_cycles(PwmDuty {
+            a: 0.,
+            b: 0.,
+            c: 0.,
+        });
     }
 }

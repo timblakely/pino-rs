@@ -7,6 +7,7 @@ use crate::{
         messages::Message,
     },
     current_sensing::PhaseCurrents,
+    pwm::PwmDuty,
 };
 use alloc::boxed::Box;
 
@@ -75,41 +76,38 @@ impl<'a> ControlLoop for MeasureResistance<'a> {
         let current_sensor = &mut hardware.current_sensor;
         current_sensor.sampling_period_fast();
 
-        let tim1 = &hardware.tim1;
-
         self.current += current_sensor.sample();
         let v_bus = current_sensor.v_bus();
         self.v_bus += v_bus;
 
         let duty = (self.target_voltage / v_bus).min(MAX_PWM_DUTY_CYCLE);
-        let ccr = (2125. * duty) as u16;
 
         self.pwm_duty += duty;
 
-        match self.phase {
-            Phase::A => {
-                tim1.ccr1.write(|w| w.ccr1().bits(ccr));
-                tim1.ccr2.write(|w| w.ccr2().bits(0));
-                tim1.ccr3.write(|w| w.ccr3().bits(0));
-            }
-            Phase::B => {
-                tim1.ccr1.write(|w| w.ccr1().bits(0));
-                tim1.ccr2.write(|w| w.ccr2().bits(ccr));
-                tim1.ccr3.write(|w| w.ccr3().bits(0));
-            }
-            Phase::C => {
-                tim1.ccr1.write(|w| w.ccr1().bits(0));
-                tim1.ccr2.write(|w| w.ccr2().bits(0));
-                tim1.ccr3.write(|w| w.ccr3().bits(ccr));
-            }
-        }
+        let pwm = &mut hardware.pwm;
+        let pwms = match self.phase {
+            Phase::A => PwmDuty {
+                a: duty,
+                b: 0.,
+                c: 0.,
+            },
+            Phase::B => PwmDuty {
+                a: 0.,
+                b: duty,
+                c: 0.,
+            },
+            Phase::C => PwmDuty {
+                a: 0.,
+                b: 0.,
+                c: duty,
+            },
+        };
+        pwm.set_pwm_duty_cycles(pwms);
 
         self.loop_count += 1;
         match self.loop_count {
             x if x >= self.total_counts => {
-                tim1.ccr1.write(|w| w.ccr1().bits(0));
-                tim1.ccr2.write(|w| w.ccr2().bits(0));
-                tim1.ccr3.write(|w| w.ccr3().bits(0));
+                pwm.zero_phases();
                 LoopState::Finished
             }
             _ => LoopState::Running,

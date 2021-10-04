@@ -7,6 +7,7 @@ use crate::{
     },
     current_sensing::PhaseCurrents,
     pi_controller::PIController,
+    pwm::PwmDuty,
 };
 use num_traits::float::FloatCore;
 
@@ -70,7 +71,7 @@ impl ControlLoop for PhaseCurrent {
         let current_sensor = &mut hardware.current_sensor;
         current_sensor.sampling_period_fast();
 
-        let tim1 = &hardware.tim1;
+        let pwm = &mut hardware.pwm;
 
         let current = current_sensor.sample();
         let v_bus = current_sensor.v_bus();
@@ -82,47 +83,38 @@ impl ControlLoop for PhaseCurrent {
         };
         // Safeguard against anything unexpected
         if current > 20. || current < -20. {
-            tim1.ccr1.write(|w| w.ccr1().bits(0));
-            tim1.ccr2.write(|w| w.ccr2().bits(0));
-            tim1.ccr3.write(|w| w.ccr3().bits(0));
+            pwm.zero_phases();
             return LoopState::Finished;
         };
         let target_voltage = self.controller.update(current, self.target_current);
         let duty = target_voltage.abs() / v_bus;
-        let ccr = ((2125. * duty) as u16).clamp(0, 2125);
-
-        let (active_ccr, inactive_ccr) = match target_voltage {
-            x if x < 0. => (ccr, 0),
-            _ => (0, ccr),
-        };
 
         // Note: since we want to sense _positive_ current on one phase, we actually want to
         // _switch_ the other phases so that when the ADC triggers and measures the back-EMF, the
         // current is flowing _out_ the desired phase.
-        match self.phase {
-            Phase::A => {
-                tim1.ccr1.write(|w| w.ccr1().bits(active_ccr));
-                tim1.ccr2.write(|w| w.ccr2().bits(inactive_ccr));
-                tim1.ccr3.write(|w| w.ccr3().bits(inactive_ccr));
-            }
-            Phase::B => {
-                tim1.ccr1.write(|w| w.ccr1().bits(ccr));
-                tim1.ccr2.write(|w| w.ccr2().bits(active_ccr));
-                tim1.ccr3.write(|w| w.ccr3().bits(ccr));
-            }
-            Phase::C => {
-                tim1.ccr1.write(|w| w.ccr1().bits(inactive_ccr));
-                tim1.ccr2.write(|w| w.ccr2().bits(inactive_ccr));
-                tim1.ccr3.write(|w| w.ccr3().bits(active_ccr));
-            }
-        }
+        let pwms = match self.phase {
+            Phase::A => PwmDuty {
+                a: duty,
+                b: 1. - duty,
+                c: 1. - duty,
+            },
+            Phase::B => PwmDuty {
+                a: 1. - duty,
+                b: duty,
+                c: 1. - duty,
+            },
+            Phase::C => PwmDuty {
+                a: 1. - duty,
+                b: 1. - duty,
+                c: duty,
+            },
+        };
+        pwm.set_pwm_duty_cycles(pwms);
 
         self.loop_count += 1;
         match self.loop_count {
             x if x >= self.total_counts => {
-                tim1.ccr1.write(|w| w.ccr1().bits(0));
-                tim1.ccr2.write(|w| w.ccr2().bits(0));
-                tim1.ccr3.write(|w| w.ccr3().bits(0));
+                pwm.zero_phases();
                 LoopState::Finished
             }
             _ => LoopState::Running,

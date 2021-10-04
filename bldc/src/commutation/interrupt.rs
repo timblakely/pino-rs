@@ -45,18 +45,14 @@ fn ADC1_2() {
 
     match commutator.commutate(&mut loop_vars.hw) {
         LoopState::Finished => {
-            let tim1 = &loop_vars.hw.tim1;
+            let pwm = &mut loop_vars.hw.pwm;
             // Make sure we pull all phases low in case the control loops didn't. Better safe than
             // sorry...
-            tim1.ccr1.write(|w| w.ccr1().bits(0));
-            tim1.ccr2.write(|w| w.ccr2().bits(0));
-            tim1.ccr3.write(|w| w.ccr3().bits(0));
+            pwm.zero_phases();
+
             // Reset the current sampling to be between PWM pulses.
-            tim1.ccr4.write(|w| w.ccr4().bits(2124));
-            // Min deadtime required is 400ns, so make sure we're at least <= 98.3% duty cycle.
-            // Safety: Upstream doesn't have an appropriate range. It's a 16 bit value, so 2083
-            // should be safe.
-            tim1.ccr5.write(|w| unsafe { w.ccr5().bits(2083) });
+            pwm.reset_current_sample();
+            pwm.reset_deadtime();
             commutator.finished();
             loop_vars.control_loop = None;
         }

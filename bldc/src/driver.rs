@@ -1,5 +1,6 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use crate::comms::fdcan::{self};
 use crate::comms::fdcan::{Fdcan, IncomingFdcanFrame, Running};
 use crate::comms::messages::Message;
 use crate::commutation::calibrate_adc::CalibrateADC;
@@ -8,14 +9,12 @@ use crate::cordic::Cordic;
 use crate::current_sensing;
 use crate::encoder::Encoder;
 use crate::memory::initialize_heap;
+use crate::pwm::PwmOutput;
+use crate::timer::TimerConfig;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
-use crate::{
-    block_until,
-    comms::fdcan::{self},
-};
-use crate::{block_while, ic::drv8323rs, ic::ma702};
+use crate::{ic::drv8323rs, ic::ma702};
 extern crate alloc;
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
@@ -437,127 +436,12 @@ impl Driver<Init> {
         });
     }
 
-    fn configure_timers(&self) {
-        // Configure TIM1 for 40kHz control loop (80kHz frequency, since up + down = 1 full cycle).
-        let tim1 = &self.mode_state.tim1;
-        // Stop the timer if it's running for some reason.
-        tim1.cr1.modify(|_, w| w.cen().clear_bit());
-        block_until!(tim1.cr1.read().cen().bit_is_clear());
-        // Center-aligned mode 2: Up/Down and interrupts on up only.
-        tim1.cr1
-            .modify(|_, w| w.dir().up().cms().center_aligned2().ckd().div1());
-        // Enable output state low on idle. Also set the master mode so that trgo2 is written based
-        // on `tim_oc4refc`
-        // Safety: mms2 doesn't have a valid range or enum set. Bits 0b0111 are tim_oc4refc.
-        tim1.cr2.modify(|_, w| {
-            unsafe {
-                w.ccpc()
-                    .clear_bit()
-                    .ois1()
-                    .clear_bit()
-                    .ois2()
-                    .clear_bit()
-                    .ois3()
-                    .clear_bit()
-                    .ois4()
-                    .clear_bit()
-                    // Configure tim_oc4refc to be on ch4. Note that this must be on mms2 for trgo2!
-                    .mms2()
-                    .bits(0b0111)
-            }
-        });
-        // Configure output channels to PWM mode 1. Note: OCxM registers are split between the first
-        // three bits and the fourth bit. For PWM mode 1 the fourth bit should be zero which is the
-        // reset value, but it's good practice to manually set it anyway.
-        tim1.ccmr1_output().modify(|_, w| {
-            w.cc1s()
-                .output()
-                .oc1m()
-                .pwm_mode1()
-                .oc1m_3()
-                .clear_bit()
-                .cc2s()
-                .output()
-                .oc2m()
-                .pwm_mode1()
-                .oc2m_3()
-                .clear_bit()
-        });
-        tim1.ccmr2_output().modify(|_, w| {
-            w.cc3s()
-                .output()
-                .oc3m()
-                .pwm_mode1()
-                .oc3m_3()
-                .clear_bit()
-                .cc4s()
-                .output()
-                .oc4m()
-                .pwm_mode1()
-                .oc4m_3()
-                .clear_bit()
-        });
-        // Enable channels 1-5. 1-3 are the output pins, channel 4 is used to trigger the current
-        // sampling, and 5 is used as the forced deadtime insertion. Set the output polarity to HIGH
-        // (rising edge).
-        tim1.ccer.modify(|_, w| {
-            w.cc1e()
-                .set_bit()
-                .cc1p()
-                .clear_bit()
-                .cc2e()
-                .set_bit()
-                .cc2p()
-                .clear_bit()
-                .cc3e()
-                .set_bit()
-                .cc3p()
-                .clear_bit()
-                .cc4e()
-                .set_bit()
-                .cc4p()
-                .clear_bit()
-                .cc5e()
-                .set_bit()
-                .cc5p()
-                .clear_bit()
-        });
-        // 80kHz@170MHz = Prescalar to 0, ARR to 2125
-        tim1.psc.write(|w| w.psc().bits(0));
-        tim1.arr.write(|w| w.arr().bits(2125));
-        // Set repetition counter to 1, since we only want update TIM1 events on only after the full
-        // up/down count cycle.
-        // Safety: Upstream: needs range to be explicitly set for safety. 16-bit value.
-        tim1.rcr.write(|w| unsafe { w.rep().bits(1) });
-        tim1.ccr1.write(|w| w.ccr1().bits(0));
-        tim1.ccr2.write(|w| w.ccr2().bits(0));
-        tim1.ccr3.write(|w| w.ccr3().bits(0));
-        // Set channel 4 to trigger _just_ before the midway point.
-        tim1.ccr4.write(|w| w.ccr4().bits(2124));
-        // Set ch5 to PWM mode and enable it.
-        // Safety: Upstream: needs enum values. PWM mode 1 is 0110.
-        tim1.ccmr3_output
-            .modify(|_, w| unsafe { w.oc5m().bits(110).oc5m_bit3().bits(0) });
-        // Configure channels 1-3 to be logical AND'd with channel 5, and set its capture compare
-        // value.
-        // Safety: Upstream: needs range to be explicitly set for safety.
-        // TODO(blakely): Set this CCR to a logical safe PWM duty (min deadtime 400ns = 98.4% duty
-        // cycle at 40kHz)
-        tim1.ccr5.modify(|_, w| unsafe {
-            w.gc5c1()
-                .set_bit()
-                .gc5c2()
-                .set_bit()
-                .gc5c3()
-                .set_bit()
-                .ccr5()
-                .bits(2083)
-        });
-    }
-
     pub fn configure_peripherals<'a>(self) -> Driver<Calibrating> {
         self.configure_gpio();
-        self.configure_timers();
+        let pwm = PwmOutput::new(self.mode_state.tim1, true).configure(TimerConfig {
+            prescalar: 1,
+            arr: 2125,
+        });
 
         let ma702 = ma702::new(self.mode_state.spi1, self.mode_state.tim3)
             .configure_spi()
@@ -639,7 +523,7 @@ impl Driver<Init> {
 
         Commutator::donate_hardware(ControlHardware {
             current_sensor: current_sensor,
-            tim1: self.mode_state.tim1,
+            pwm,
             encoder,
             cordic: Cordic::new(cordic, 20),
         });

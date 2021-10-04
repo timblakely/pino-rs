@@ -15,7 +15,6 @@ const FRAC_SQRT_3_2: f32 = SQRT_3 / 2.;
 const DT: f32 = 1. / 40_000.;
 const _MIN_PWM_VALUE: f32 = 0.;
 const _MAX_PWM_VALUE: f32 = 2125.;
-const PWM_INVERT: bool = true;
 
 pub struct DQCurrents {
     pub q: f32,
@@ -139,25 +138,7 @@ impl ControlLoop for FieldOrientedControl {
 
         // Get the current rail voltage.
         let v_bus = hardware.current_sensor.v_bus();
-        let tim1 = &hardware.tim1;
-
-        let pwms = match PWM_INVERT {
-            false => PwmDuty {
-                a: new_voltages.a / v_bus * 0.5 + 0.5,
-                b: new_voltages.b / v_bus * 0.5 + 0.5,
-                c: new_voltages.c / v_bus * 0.5 + 0.5,
-            },
-            true => PwmDuty {
-                a: -new_voltages.a / v_bus * 0.5 + 0.5,
-                b: -new_voltages.b / v_bus * 0.5 + 0.5,
-                c: -new_voltages.c / v_bus * 0.5 + 0.5,
-            },
-        };
-
-        // Set PWM values
-        tim1.ccr1.write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
-        tim1.ccr2.write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
-        tim1.ccr3.write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
+        hardware.pwm.set_voltages(v_bus, new_voltages);
         LoopState::Running
     }
 
