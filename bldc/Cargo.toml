@@ -1,5 +1,3 @@
-cargo-features = ["edition2021"]
-
 [package]
 authors = ["Tim Blakely <tim.blakely@gmail.com>"]
 # edition = "2021"
