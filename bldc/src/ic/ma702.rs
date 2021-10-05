@@ -390,20 +390,6 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
 // complete.
 #[interrupt]
 fn DMA1_CH2() {
-    unsafe {
-        *(0x4800_0418 as *mut u32) = 1 << 6;
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        *(0x4800_0418 as *mut u32) = 1 << (6 + 16);
-    }
     // Clear pending IRQ in NVIC.
     clear_pending_irq(device::Interrupt::DMA1_CH2);
 
