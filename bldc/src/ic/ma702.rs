@@ -248,16 +248,16 @@ impl Ma702<Ready> {
         tim3.cr1.modify(|_, w| w.dir().up().cms().edge_aligned());
         // Fire off a DMA on update (i.e. counter overflow)
         tim3.dier.modify(|_, w| w.ude().set_bit());
-        // Assuming 170MHz core clock, set prescalar to 4 and ARR to 42500 for 170e6/42500/4=1kHz.
+        // Assuming 170MHz core clock, set prescalar to 4 and ARR to 850 for 170e6/850/4=50kHz.
         // Why is the value actually 3 and not 4? The timer clock is set to `core_clk / (PSC[PSC] +
         // 1)`. If it were to use the value directly it'd divide the clock by zero on reset, which
         // would be A Bad Thing.
         // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 3 is well
         // within range.
         tim3.psc.write(|w| w.psc().bits(3));
-        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 42500 is within
+        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 850 is within
         // range.
-        tim3.arr.write(|w| unsafe { w.arr().bits(425) });
+        tim3.arr.write(|w| unsafe { w.arr().bits(850) });
         // Kick off tim3 to start the stream.
         tim3.cr1.modify(|_, w| w.cen().set_bit());
     }
