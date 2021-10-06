@@ -13,7 +13,10 @@
             "problemMatcher": [
                 "$rustc"
             ],
-            "group": "build"
+            "group": "build",
+            "options": {
+                "cwd": "firmware"
+            }
         },
         {
             "label": "Cargo Size Debug",
@@ -25,7 +28,10 @@
             ],
             "problemMatcher": [
                 "$rustc"
-            ]
+            ],
+            "options": {
+                "cwd": "firmware"
+            }
         },
         {
             "label": "Build debug",
@@ -38,6 +44,9 @@
             "group": {
                 "kind": "build",
                 "isDefault": true
+            },
+            "options": {
+                "cwd": "firmware"
             }
         },
         {
@@ -51,7 +60,10 @@
             "problemMatcher": [
                 "$rustc"
             ],
-            "group": "build"
+            "group": "build",
+            "options": {
+                "cwd": "firmware"
+            }
         },
         {
             "label": "Cargo Size Release",
@@ -64,7 +76,10 @@
             ],
             "problemMatcher": [
                 "$rustc"
-            ]
+            ],
+            "options": {
+                "cwd": "firmware"
+            }
         },
         {
             "label": "Build release",
@@ -74,34 +89,10 @@
                 "Cargo Size Release"
             ],
             "problemMatcher": [],
-            "group": "build"
-        },
-        {
-            "label": "Cargo Build Examples (debug)",
-            "type": "process",
-            "command": "cargo",
-            "args": [
-                "build",
-                "--examples"
-            ],
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "build"
-        },
-        {
-            "label": "Cargo Build Examples (release)",
-            "type": "process",
-            "command": "cargo",
-            "args": [
-                "build",
-                "--examples",
-                "--release"
-            ],
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "build"
+            "group": "build",
+            "options": {
+                "cwd": "firmware"
+            }
         },
         {
             "label": "Cargo Clean",

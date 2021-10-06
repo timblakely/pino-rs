@@ -17,5 +17,10 @@
     "Vref",
     "breakin"
   ],
-  "lldb.showDisassembly": "always"
+  "lldb.showDisassembly": "always",
+  "rust-analyzer.linkedProjects": [
+    // order is important (rust-analyzer/rust-analyzer#7764)
+    "Cargo.toml",
+    "cross/Cargo.toml",
+  ]
 }

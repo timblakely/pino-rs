@@ -1,6 +1,7 @@
 [workspace]
 members = [
-  "tools/serial",
+  "bldc",
+  "third_party",
 ]
 
 [profile.release]
