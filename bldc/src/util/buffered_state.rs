@@ -45,7 +45,8 @@ impl<T: Copy> StateReader<T> {
     pub fn read(&self) -> &T {
         // Safety: enforced to be non-null by NonNull
         let state = unsafe { self.state.as_ref() };
-        match state.current.load(Ordering::Acquire) {
+        let reading_state = state.current.load(Ordering::Acquire);
+        match reading_state {
             0 => &state.value[0],
             _ => &state.value[1],
         }
@@ -58,6 +59,7 @@ pub struct StateWriter<T: Copy> {
     state: NonNull<BufferedState<T>>,
 }
 
+// TODO(blakely): Fix this so that it's actually Send with proper locking.
 unsafe impl<T: Copy> Send for StateWriter<T> {}
 
 impl<T: Copy> StateWriter<T> {

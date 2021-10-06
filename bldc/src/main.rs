@@ -5,7 +5,7 @@
 use bldc::{
     comms::messages::Message,
     commutation::{
-        calibrate_adc::CalibrateADCCmd,
+        pos_vel_control::{PosVelCommand, PosVelControl, PosVelMode},
         torque_control::{TorqueControl, TorqueControlCmd},
         Commutator,
     },
@@ -27,71 +27,13 @@ fn main() -> ! {
         Commutator::set(TorqueControl::new(cmd.duration, cmd.currents))
     });
 
-    driver.on(Message::CalibrateADC, |_frame: CalibrateADCCmd| {});
+    driver.on(Message::PosVelControl, |_: PosVelMode| {
+        Commutator::set(PosVelControl::new())
+    });
+
+    driver.on(Message::PosVelCommand, |cmd: PosVelCommand| {
+        PosVelControl::command(cmd);
+    });
 
     driver.listen();
-
-    // Listen for any incoming FDCAN messages.
-    // driver.listen(|fdcan, message| {
-    //     // We've received a message via the FDCAN.
-    //     match Messages::unpack_fdcan(message) {
-    //         Some(Messages::IdleCurrentSense(m)) => {
-    //             Commutator::set(IdleCurrentSensor::new(m.duration, |measurement| {
-    //                 fdcan.send_message(measurement);
-    //             }))
-    //         }
-    //         Some(Messages::CalibrateADC(m)) => {
-    //             Commutator::set(CalibrateADC::new(m.duration, |measurement| {
-    //                 fdcan.send_message(measurement);
-    //             }))
-    //         }
-    //         Some(Messages::IdleCurrentDistribution(m)) => {
-    //             Commutator::set(IdleCurrentDistribution::new(
-    //                 m.duration,
-    //                 m.center_current,
-    //                 m.current_range,
-    //                 m.phase,
-    //                 |bins| {
-    //                     fdcan.send_message(&CurrentDistribution { bins });
-    //                 },
-    //             ))
-    //         }
-    //         Some(Messages::MeasureInductance(m)) => Commutator::set(MeasureInductance::new(
-    //             m.duration,
-    //             m.frequency,
-    //             m.pwm_duty,
-    //             m.sample_pwm_percent,
-    //             |inductances| {
-    //                 fdcan.send_message(&Inductances {
-    //                     inductances: &inductances,
-    //                 });
-    //             },
-    //         )),
-    //         Some(Messages::MeasureResistance(m)) => Commutator::set(MeasureResistance::new(
-    //             m.duration,
-    //             m.target_voltage,
-    //             m.phase,
-    //             |measurement| {
-    //                 fdcan.send_message(measurement);
-    //             },
-    //         )),
-    //         Some(Messages::PhaseCurrentCommand(m)) => Commutator::set(PhaseCurrent::new(
-    //             m.duration,
-    //             m.target_current,
-    //             m.phase,
-    //             m.k,
-    //             m.ki,
-    //         )),
-    //         Some(Messages::ReadEncoder(_)) => {
-    //             Commutator::set(ReadEncoder::new(|results| fdcan.send_message(results)))
-    //         }
-    //         Some(Messages::CalibrateEZero(m)) => {
-    //             Commutator::set(CalibrateEZero::new(m.duration, m.currents, |measurement| {
-    //                 fdcan.send_message(measurement);
-    //             }))
-    //         }
-    //         _ => (),
-    //     };
-    // });
-    // loop {}
 }

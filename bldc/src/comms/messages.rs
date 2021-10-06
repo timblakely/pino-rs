@@ -12,6 +12,8 @@ pub enum Message {
     CalibrateEZero = 0x15,
     EZero = 0x16,
     TorqueControl = 0x17,
+    PosVelControl = 0x18,
+    PosVelCommand = 0x19,
 }
 
 // impl Messages {

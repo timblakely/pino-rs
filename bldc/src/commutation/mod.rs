@@ -11,14 +11,15 @@ use alloc::boxed::Box;
 
 pub mod calibrate_adc;
 pub mod calibrate_e_zero;
-pub mod torque_control;
 pub mod idle_current_distribution;
 pub mod idle_current_sensor;
 pub mod interrupt;
 pub mod measure_inductance;
 pub mod measure_resistance;
 pub mod phase_current;
+pub mod pos_vel_control;
 pub mod read_encoder;
+pub mod torque_control;
 
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;
