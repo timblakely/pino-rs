@@ -1,10 +1,10 @@
 #![no_std]
 #![no_main]
-#![feature(unboxed_closures, fn_traits)]
 
 use bldc::{
-    comms::messages::Message,
+    comms::{fdcan, messages::Message},
     commutation::{
+        calibrate_e_zero::{CalibrateEZeroCmd, EZeroMsg},
         pos_vel_control::{PosVelCommand, PosVelControl, PosVelMode},
         torque_control::{TorqueControl, TorqueControlCmd},
         Commutator,
@@ -22,6 +22,15 @@ use panic_itm as _; // you can put a breakpoint on `rust_begin_unwind` to catch 
 fn main() -> ! {
     // Acquire the driver.
     let mut driver = driver::take_hardware().configure_peripherals().calibrate();
+
+    driver.on(Message::CalibrateEZero, |_: CalibrateEZeroCmd| {
+        fdcan::send_message(&EZeroMsg {
+            angle: 123.,
+            angle_raw: 456,
+            e_angle: 789.,
+            e_raw: 1337.,
+        });
+    });
 
     driver.on(Message::TorqueControl, |cmd: TorqueControlCmd| {
         Commutator::set(TorqueControl::new(cmd.duration, cmd.currents))
