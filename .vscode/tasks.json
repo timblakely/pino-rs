@@ -4,7 +4,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Cargo Build Debug",
+            "label": "BLDC Debug",
             "type": "process",
             "command": "cargo",
             "args": [
@@ -19,7 +19,7 @@
             }
         },
         {
-            "label": "Cargo Size Debug",
+            "label": "BLDC Size Debug",
             "type": "process",
             "command": "cargo",
             "args": [
@@ -34,11 +34,11 @@
             }
         },
         {
-            "label": "Build debug",
+            "label": "BLDC debug",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "Cargo Build Debug",
-                "Cargo Size Debug"
+                "BLDC Debug",
+                "BLDC Size Debug"
             ],
             "problemMatcher": [],
             "group": {
@@ -50,7 +50,7 @@
             }
         },
         {
-            "label": "Cargo Build Release",
+            "label": "BLDC Release",
             "type": "process",
             "command": "cargo",
             "args": [
@@ -66,7 +66,7 @@
             }
         },
         {
-            "label": "Cargo Size Release",
+            "label": "BLDC Size Release",
             "type": "process",
             "command": "cargo",
             "args": [
@@ -82,11 +82,11 @@
             }
         },
         {
-            "label": "Build release",
+            "label": "BLDC release",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "Cargo Build Release",
-                "Cargo Size Release"
+                "BLDC Release",
+                "BLDC Size Release"
             ],
             "problemMatcher": [],
             "group": "build",
@@ -102,6 +102,20 @@
                 "clean"
             ],
             "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "Build fdcom",
+            "type": "process",
+            "command": "cargo",
+            "args": [
+                "build",
+                "-p",
+                "fdcom"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
             "group": "build"
         }
     ]

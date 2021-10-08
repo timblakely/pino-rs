@@ -9,10 +9,10 @@
         {
             "type": "cortex-debug",
             "request": "launch",
-            "name": "Debug (OpenOCD)",
+            "name": "BLDC Debug",
             "servertype": "openocd",
             "cwd": "${workspaceRoot}/firmware",
-            "preLaunchTask": "Build debug",
+            "preLaunchTask": "BLDC debug",
             "runToMain": true,
             "executable": "./target/thumbv7em-none-eabihf/debug/bldc",
             "device": "STM32G474RE",
@@ -75,10 +75,10 @@
         {
             "type": "cortex-debug",
             "request": "launch",
-            "name": "RELEASE (OpenOCD)",
+            "name": "BLDC Release",
             "servertype": "openocd",
             "cwd": "${workspaceRoot}/firmware",
-            "preLaunchTask": "Build release",
+            "preLaunchTask": "BLDC release",
             "runToMain": true,
             "executable": "./target/thumbv7em-none-eabihf/release/bldc",
             "device": "STM32G474RE",
@@ -132,6 +132,46 @@
                 "-s",
                 "./tools/openocd.gdb"
             ]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug fdcom",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=fdcom",
+                    "--package=fdcom"
+                ],
+                "filter": {
+                    "name": "fdcom",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "-p",
+                "/dev/fdcanusb"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug tests in 'fdcom'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=fdcom",
+                    "--package=fdcom"
+                ],
+                "filter": {
+                    "name": "fdcom",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
