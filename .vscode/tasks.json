@@ -102,11 +102,24 @@
             "group": "build"
         },
         {
-            "label": "Build fdcom",
+            "label": "Fdcom debug",
+            "type": "process",
+            "command": "cargo",
+            "args": [
+                "build"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Fdcom release",
             "type": "process",
             "command": "cargo",
             "args": [
                 "build",
+                "--release"
             ],
             "problemMatcher": [
                 "$rustc"

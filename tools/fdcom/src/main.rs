@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    str,
+    str, thread,
     time::{Duration, SystemTime},
 };
 
@@ -9,12 +9,17 @@ use serialport::SerialPort;
 
 use messages::Message;
 
-struct FdcanusbMessage {
+enum FdcanUSBMessage {
+    Ok,
+    Receive(FdcanMessage),
+}
+
+struct FdcanMessage {
     id: Message,
     payload: Vec<u8>,
 }
 
-impl Display for FdcanusbMessage {
+impl Display for FdcanMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "can ext {:#01x} ", self.id as u16)?;
         for byte in &self.payload {
@@ -24,9 +29,9 @@ impl Display for FdcanusbMessage {
     }
 }
 
-impl FdcanusbMessage {
-    pub fn new(id: Message, payload: Vec<u8>) -> FdcanusbMessage {
-        FdcanusbMessage { id, payload }
+impl FdcanMessage {
+    pub fn new(id: Message, payload: Vec<u8>) -> FdcanMessage {
+        FdcanMessage { id, payload }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -46,33 +51,50 @@ where
 }
 
 fn e_zero(port: &mut dyn SerialPort) {
-    let msg = FdcanusbMessage::new(
+    let msg = FdcanMessage::new(
         Message::CalibrateEZero,
         [1f32.to_le_bytes(), 1f32.to_le_bytes(), 0f32.to_le_bytes()].concat(),
     );
 
-    time_it("write", || {
-        port.write(&msg.to_bytes()).expect("Failed to write");
+    println!("Writing bytes: {}", msg);
+
+    let mut buffer: Vec<u8> = vec![0; 4096];
+    let mut num_read: usize = 0;
+
+    time_it("Write", || {
+        time_it("write", || {
+            port.write(&msg.to_bytes()).expect("Failed to write");
+        });
     });
 
-    // let mut buffer: Vec<u8> = vec![0; 4];
-    // port.read_exact(buffer.as_mut_slice())
-    //     .expect("Could not read 'OK'");
+    thread::sleep(Duration::from_millis(10));
 
-    let mut buffer: Vec<u8> = vec![0; 128];
+    time_it("WriteWriteWrite", || {
+        time_it("Write", || {
+            port.write(&msg.to_bytes()).expect("Failed to write");
+        });
+        thread::sleep(Duration::from_millis(10));
+        time_it("Write", || {
+            port.write(&msg.to_bytes()).expect("Failed to write");
+        });
+        thread::sleep(Duration::from_millis(10));
+        time_it("Write", || {
+            port.write(&msg.to_bytes()).expect("Failed to write");
+        });
+        thread::sleep(Duration::from_millis(10));
+    });
 
-    let mut num_read: usize = 0;
-    time_it("read", || {
+    thread::sleep(Duration::from_millis(10));
+    time_it("Read", || {
         num_read = port
             .read(buffer.as_mut_slice())
             .expect("Could not read 'OK'");
+        println!(
+            "Read {} bytes: {:?}",
+            num_read,
+            str::from_utf8(&buffer[..num_read])
+        );
     });
-
-    println!(
-        "Read {} bytes: {:?}",
-        num_read,
-        str::from_utf8(&buffer[..num_read])
-    );
 }
 
 fn main() {
@@ -94,8 +116,11 @@ fn main() {
     }
 
     let port_name = matches.value_of("port").unwrap();
-    let mut port = serialport::new(port_name, 10_000_000)
+    let mut port = serialport::new(port_name, 100_000_000)
         .timeout(Duration::from_millis(1000))
+        .flow_control(serialport::FlowControl::None)
+        .parity(serialport::Parity::None)
+        .stop_bits(serialport::StopBits::One)
         .open()
         .expect(format!("Could not open port {}", port_name).as_str());
 

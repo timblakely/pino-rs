@@ -173,6 +173,29 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}/tools",
-        }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release fdcom",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=fdcom",
+                    "--package=fdcom",
+                    "--release",
+                ],
+                "filter": {
+                    "name": "fdcom",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "-p",
+                "/dev/fdcanusb",
+                "ezero"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
     ]
 }
