@@ -9,7 +9,7 @@ use serialport::SerialPort;
 
 use messages::Message;
 
-enum FdcanUSBMessage {
+enum _FdcanUSBMessage {
     Ok,
     Receive(FdcanMessage),
 }
@@ -97,6 +97,21 @@ fn e_zero(port: &mut dyn SerialPort) {
     });
 }
 
+fn spin(port: &mut dyn SerialPort) {
+    let msg = FdcanMessage::new(
+        Message::TorqueControl,
+        [1f32.to_le_bytes(), 1f32.to_le_bytes(), 0f32.to_le_bytes()].concat(),
+    );
+
+    println!("Writing bytes: {}", msg);
+
+    time_it("Write", || {
+        time_it("write", || {
+            port.write(&msg.to_bytes()).expect("Failed to write");
+        });
+    });
+}
+
 fn main() {
     let matches = App::new("Fdcom")
         .version("0.0.1")
@@ -104,6 +119,7 @@ fn main() {
         .subcommand(SubCommand::with_name("list").about("show available ports"))
         .arg(Arg::with_name("port").short("p").value_name("PORT"))
         .subcommand(SubCommand::with_name("ezero").about("dummy signal for Ezero"))
+        .subcommand(SubCommand::with_name("spin").about("Spin  motor for one second"))
         .get_matches();
 
     if let Some(_) = matches.subcommand_matches("list") {
@@ -124,7 +140,9 @@ fn main() {
         .open()
         .expect(format!("Could not open port {}", port_name).as_str());
 
-    if matches.is_present("ezero") {
-        return e_zero(&mut *port);
+    match matches.subcommand() {
+        ("ezero", Some(_sub_m)) => e_zero(&mut *port),
+        ("spin", Some(_sub_m)) => spin(&mut *port),
+        _ => {}
     }
 }
