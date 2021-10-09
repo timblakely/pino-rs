@@ -22,18 +22,32 @@ impl<T> Led<T> {
         C: FnMut() -> R,
         Self: LedBit,
     {
+        Self::on();
+        let retval = callback();
+        Self::off();
+        retval
+    }
+
+    pub fn on()
+    where
+        Self: LedBit,
+    {
         // Safety: atomic write to bit set/reset regsiter with no side effects.
         unsafe {
             (*GPIOB::ptr()).bsrr.write(|w| w.bits(1 << Self::bit()));
         }
-        let retval = callback();
+    }
+
+    pub fn off()
+    where
+        Self: LedBit,
+    {
         // Safety: atomic write to bit set/reset regsiter with no side effects.
         unsafe {
             (*GPIOB::ptr())
                 .bsrr
                 .write(|w| w.bits(1 << (Self::bit() + 16)));
         }
-        retval
     }
 }
 
