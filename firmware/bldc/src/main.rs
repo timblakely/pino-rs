@@ -2,7 +2,7 @@
 #![no_main]
 
 use bldc::{
-    comms::{fdcan, messages::Message},
+    comms::fdcan,
     commutation::{
         calibrate_e_zero::{CalibrateEZeroCmd, EZeroMsg},
         pos_vel_control::{PosVelCommand, PosVelControl, PosVelMode},
@@ -11,6 +11,7 @@ use bldc::{
     },
     driver,
 };
+use messages::Message;
 
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;

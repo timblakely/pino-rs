@@ -1,6 +1,7 @@
 [workspace]
 members = [
-  "tools/serial",
+  "tools/fdcom",
+  "messages",
 ]
 
 [profile.release]

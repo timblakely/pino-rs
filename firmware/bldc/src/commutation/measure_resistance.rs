@@ -2,14 +2,12 @@ extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::{
-        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
-        messages::Message,
-    },
+    comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
     pwm::PwmDuty,
 };
 use alloc::boxed::Box;
+use messages::Message;
 
 // Switch a single phase via PWM and measure the steady-state current for a period of time to
 // calculate the phase resistance.

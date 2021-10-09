@@ -11,14 +11,14 @@ use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 use heapless::FnvIndexMap;
+
+use messages::Message;
 use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
 use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
-
-use super::messages::Message;
 
 pub mod extended_filter;
 pub mod rx_fifo;

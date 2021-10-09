@@ -2,14 +2,12 @@ extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::{
-        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
-        messages::Message,
-    },
+    comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
     pwm::PwmDuty,
 };
 use alloc::boxed::Box;
+use messages::Message;
 
 // Drive a zero-centered square wave through the phases, which should result in a triangle wave of
 // current through the inductor. Measuring current over time should give us the inductance via

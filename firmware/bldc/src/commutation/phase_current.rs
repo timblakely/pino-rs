@@ -1,14 +1,12 @@
 extern crate alloc;
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::{
-        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
-        messages::Message,
-    },
+    comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
     pi_controller::PIController,
     pwm::PwmDuty,
 };
+use messages::Message;
 use num_traits::float::FloatCore;
 
 // Control current for a single phase.

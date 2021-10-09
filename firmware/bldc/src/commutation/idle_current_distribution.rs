@@ -1,12 +1,9 @@
 extern crate alloc;
 
-use crate::comms::{
-    fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
-    messages::Message,
-};
-
 use super::{ControlHardware, ControlLoop, LoopState};
+use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
 use alloc::boxed::Box;
+use messages::Message;
 
 // Sample current one one phase for a period of time, building a histogram of currents.
 

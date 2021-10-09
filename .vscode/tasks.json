@@ -41,10 +41,7 @@
                 "BLDC Size Debug"
             ],
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
+            "group": "build",
             "options": {
                 "cwd": "firmware"
             }
@@ -110,13 +107,14 @@
             "command": "cargo",
             "args": [
                 "build",
-                "-p",
-                "fdcom"
             ],
             "problemMatcher": [
                 "$rustc"
             ],
-            "group": "build"
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

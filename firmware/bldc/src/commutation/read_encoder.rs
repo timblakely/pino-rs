@@ -1,9 +1,7 @@
 extern crate alloc;
 
-use crate::comms::{
-    fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
-    messages::Message,
-};
+use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
+use messages::Message;
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use alloc::boxed::Box;

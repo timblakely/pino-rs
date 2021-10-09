@@ -150,7 +150,8 @@
             },
             "args": [
                 "-p",
-                "/dev/fdcanusb"
+                "/dev/fdcanusb",
+                "ezero"
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -171,7 +172,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}/tools",
         }
     ]
 }

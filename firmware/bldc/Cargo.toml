@@ -20,6 +20,7 @@ ringbuffer = {version = "0.8.1", default-features = false}
 rlsf = {version = "0.1.2" }
 static_assertions = "1.1.0"
 third_party = {path = "../third_party"}
+messages = {path = "../../messages"}
 vcell = "0.1.0"
 
 [features]

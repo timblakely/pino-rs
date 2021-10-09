@@ -2,15 +2,13 @@ extern crate alloc;
 
 use super::{ControlHardware, ControlLoop, LoopState};
 use crate::{
-    comms::{
-        fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
-        messages::Message,
-    },
+    comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     foc::{DQCurrents, FieldOrientedControlImpl},
     led::Led,
     pi_controller::PIController,
 };
 use alloc::boxed::Box;
+use messages::Message;
 
 // Field-oriented control. Very basic Park/Clark forward and inverse. Currently no SVM is performed,
 // and only a single i_q/i_d value is accepted S

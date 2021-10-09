@@ -1,8 +1,9 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use messages::Message;
+
 use crate::comms::fdcan::{self};
 use crate::comms::fdcan::{Fdcan, IncomingFdcanFrame, Running};
-use crate::comms::messages::Message;
 use crate::commutation::calibrate_adc::CalibrateADC;
 use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
