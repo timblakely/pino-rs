@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use super::{ControlHardware, ControlLoop, LoopState};
+use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
 use alloc::boxed::Box;
 use messages::Message;
@@ -64,7 +64,11 @@ impl<'a> IdleCurrentDistribution<'a> {
 }
 
 impl<'a> ControlLoop for IdleCurrentDistribution<'a> {
-    fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
+    fn commutate(
+        &mut self,
+        _sensor_state: &SensorState,
+        hardware: &mut ControlHardware,
+    ) -> CommutationLoop {
         self.loop_count += 1;
         let current_sensor = &hardware.current_sensor;
         let sample = current_sensor.sample();
@@ -80,8 +84,8 @@ impl<'a> ControlLoop for IdleCurrentDistribution<'a> {
         self.bins[bin_index] += 1;
 
         match self.loop_count {
-            x if x >= self.total_counts => LoopState::Finished,
-            _ => LoopState::Running,
+            x if x >= self.total_counts => CommutationLoop::Finished,
+            _ => CommutationLoop::Running,
         }
     }
 

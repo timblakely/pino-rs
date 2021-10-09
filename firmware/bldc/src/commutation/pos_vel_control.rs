@@ -7,7 +7,7 @@ use crate::{
     util::buffered_state::{BufferedState, StateReader, StateWriter},
 };
 
-use super::{ControlLoop, LoopState};
+use super::{CommutationLoop, ControlLoop, SensorState};
 
 const GEAR_RATIO: f32 = 6.0;
 const DT: f32 = 1. / 40_000.;
@@ -90,7 +90,11 @@ impl PosVelControl {
 }
 
 impl ControlLoop for PosVelControl {
-    fn commutate(&mut self, hardware: &mut super::ControlHardware) -> LoopState {
+    fn commutate(
+        &mut self,
+        _sensor_state: &SensorState,
+        hardware: &mut super::ControlHardware,
+    ) -> CommutationLoop {
         let mech_angle = hardware.encoder.angle_state().angle_multiturn.in_radians();
         let mech_velocity = hardware.encoder.angle_state().velocity.in_radians();
 
@@ -112,7 +116,7 @@ impl ControlLoop for PosVelControl {
             DT,
         );
         hardware.pwm.set_voltages(v_bus, phase_voltages);
-        LoopState::Running
+        CommutationLoop::Running
     }
     fn finished(&mut self) {}
 }

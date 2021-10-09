@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use super::{ControlHardware, ControlLoop, LoopState};
+use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     foc::{DQCurrents, FieldOrientedControlImpl},
@@ -61,19 +61,23 @@ impl<'a> CalibrateEZero<'a> {
 }
 
 impl<'a> ControlLoop for CalibrateEZero<'a> {
-    fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
+    fn commutate(
+        &mut self,
+        sensor_state: &SensorState,
+        hardware: &mut ControlHardware,
+    ) -> CommutationLoop {
         Led::<crate::led::Red>::on_while(|| {
-            // Get the current rail voltage.
-            let v_bus = hardware.current_sensor.v_bus();
-
+            let ControlHardware {
+                ref current_sensor,
+                ref encoder,
+                ref mut cordic,
+                ..
+            } = hardware;
             // Calculate the required PWM values via field oriented control.
-            let phase_voltages = self.foc.update(
-                &hardware.current_sensor,
-                &hardware.encoder,
-                &mut hardware.cordic,
-                DT,
-            );
-            hardware.pwm.set_voltages(v_bus, phase_voltages);
+            let phase_voltages = self.foc.update(current_sensor, encoder, cordic, DT);
+            hardware
+                .pwm
+                .set_voltages(sensor_state.v_bus, phase_voltages);
 
             self.loop_count += 1;
             match self.loop_count {
@@ -86,9 +90,9 @@ impl<'a> ControlLoop for CalibrateEZero<'a> {
                     //     tim1.ccr3.write(|w| w.ccr3().bits(0));
                     //     return LoopState::Finished;
                     // }
-                    LoopState::Running
+                    CommutationLoop::Running
                 }
-                _ => LoopState::Running,
+                _ => CommutationLoop::Running,
             }
         })
     }

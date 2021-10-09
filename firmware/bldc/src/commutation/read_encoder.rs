@@ -3,7 +3,7 @@ extern crate alloc;
 use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
 use messages::Message;
 
-use super::{ControlHardware, ControlLoop, LoopState};
+use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use alloc::boxed::Box;
 
 pub struct EncoderResults {
@@ -44,7 +44,11 @@ impl<'a> ReadEncoder<'a> {
 }
 
 impl<'a> ControlLoop for ReadEncoder<'a> {
-    fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState {
+    fn commutate(
+        &mut self,
+        _sensor_state: &SensorState,
+        hardware: &mut ControlHardware,
+    ) -> CommutationLoop {
         let results = &mut self.encoder_results;
 
         let encoder = &hardware.encoder;
@@ -55,11 +59,11 @@ impl<'a> ControlLoop for ReadEncoder<'a> {
 
         results.angle = angle_state.angle.in_radians();
         results.velocity = angle_state.velocity.in_radians();
-        results.e_angle = encoder.electrical_angle.in_radians();
-        results.e_velocity = encoder.electrical_velocity.in_radians();
+        results.e_angle = encoder.electrical_angle().in_radians();
+        results.e_velocity = encoder.electrical_velocity().in_radians();
         results.a_cos = cos;
         results.a_sin = sin;
-        LoopState::Finished
+        CommutationLoop::Finished
     }
 
     fn finished(&mut self) {

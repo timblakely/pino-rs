@@ -1,7 +1,8 @@
 use crate::{
     cordic::Cordic,
-    current_sensing::{self, CurrentSensor},
-    encoder::Encoder,
+    current_sensing::{self, CurrentSensor, PhaseCurrents},
+    encoder::{Encoder, EncoderState},
+    ic::ma702::AngleState,
     pwm::PwmOutput,
     util::interrupts::block_interrupt,
 };
@@ -33,28 +34,54 @@ pub struct ControlHardware {
     pub cordic: Cordic,
 }
 
+// TODO(blakely): don't require these to be Copy/Clone; use references instead.
+pub struct SensorState {
+    pub angle_state: AngleState,
+    pub encoder_state: EncoderState,
+    pub currents: PhaseCurrents,
+    pub v_bus: f32,
+}
+
+impl SensorState {
+    pub fn new(
+        angle_state: &AngleState,
+        encoder_state: &EncoderState,
+        currents: &PhaseCurrents,
+        v_bus: f32,
+    ) -> SensorState {
+        SensorState {
+            angle_state: *angle_state,
+            encoder_state: *encoder_state,
+            currents: *currents,
+            v_bus,
+        }
+    }
+}
+
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
-pub struct ControlLoopVars {
+pub struct CommutationState {
     pub control_loop: Option<Box<dyn ControlLoop>>,
+    pub sensor_state: Option<SensorState>,
     pub hw: ControlHardware,
 }
 
-pub static CONTROL_LOOP: SpinLock<Option<ControlLoopVars>> = SpinLock::new(None);
+pub static COMMUTATION_STATE: SpinLock<Option<CommutationState>> = SpinLock::new(None);
 
 pub struct Commutator {}
 
 impl Commutator {
     pub fn donate_hardware(hw: ControlHardware) {
-        *CONTROL_LOOP
+        *COMMUTATION_STATE
             .try_lock()
-            .expect("Lock held while trying to donate hardware") = Some(ControlLoopVars {
+            .expect("Lock held while trying to donate hardware") = Some(CommutationState {
             control_loop: None,
             hw,
+            sensor_state: None,
         });
     }
 
     pub fn set<'a>(commutator: impl ControlLoop + 'a) {
-        block_interrupt(device::interrupt::ADC1_2, &CONTROL_LOOP, |mut vars| {
+        block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
             let boxed: Box<dyn ControlLoop> = Box::new(commutator);
             vars.control_loop = unsafe { core::mem::transmute(Some(boxed)) };
         });
@@ -63,7 +90,7 @@ impl Commutator {
     pub fn enable_loop() {
         block_interrupt(
             device::interrupt::ADC1_2,
-            &CONTROL_LOOP,
+            &COMMUTATION_STATE,
             |mut control_vars| {
                 control_vars.hw.pwm.enable_loop();
             },
@@ -74,7 +101,7 @@ impl Commutator {
     pub fn disable_loop() {
         block_interrupt(
             device::interrupt::ADC1_2,
-            &CONTROL_LOOP,
+            &COMMUTATION_STATE,
             |mut control_vars| {
                 control_vars.hw.pwm.disable_loop();
             },
@@ -82,13 +109,17 @@ impl Commutator {
     }
 }
 
-pub enum LoopState {
+pub enum CommutationLoop {
     Running,
     Finished,
 }
 
 // Trait that any control loops need to implement.
 pub trait ControlLoop: Send {
-    fn commutate(&mut self, hardware: &mut ControlHardware) -> LoopState;
+    fn commutate(
+        &mut self,
+        sensor_state: &SensorState,
+        hardware: &mut ControlHardware,
+    ) -> CommutationLoop;
     fn finished(&mut self);
 }

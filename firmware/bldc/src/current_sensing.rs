@@ -520,6 +520,7 @@ fn sample_raw<T: CurrentSensorState>(sensor: &CurrentSensor<T>) -> PhaseCurrents
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct PhaseCurrents {
     pub phase_a: f32,
     pub phase_b: f32,

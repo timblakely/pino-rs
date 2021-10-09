@@ -1,7 +1,9 @@
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
-use super::{LoopState, CONTROL_LOOP};
+use crate::led::{self, Led};
+
+use super::{CommutationLoop, ControlHardware, SensorState, COMMUTATION_STATE};
 
 // Interrupt handler triggered by TIM1[CH4]'s tim_trgo2. Under normal circumstances this function
 // will be called continuously, regardless of the control loop in place. Note that the control loop
@@ -9,33 +11,51 @@ use super::{LoopState, CONTROL_LOOP};
 // important that any modifications that are done by the control loop are un-done on completion.
 #[interrupt]
 fn ADC1_2() {
-    // Clear the IRQ so it doesn't immediately fire again.
-    clear_pending_irq(device::Interrupt::ADC1_2);
-    // Main control loop.
-    unsafe {
-        *(0x4800_0418 as *mut u32) = 1 << 9;
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        cortex_m::asm::nop();
-        *(0x4800_0418 as *mut u32) = 1 << (9 + 16);
-    }
+    // Main commutation loop.
+    Led::<led::Blue>::on_while(|| {
+        // Clear the IRQ so it doesn't immediately fire again.
+        clear_pending_irq(device::Interrupt::ADC1_2);
 
-    let mut loop_vars = CONTROL_LOOP.lock();
+        commutate();
+    });
+}
+
+fn commutate() {
+    let mut loop_vars = COMMUTATION_STATE.lock();
     let mut loop_vars = loop_vars.as_mut().expect("Loop variables not set");
 
-    // Required otherwise the ADC will immediately trigger another interrupt, regardless of whether
-    // the IRQ was cleared in the NVIC above.
-    loop_vars.hw.current_sensor.acknowledge_eos();
+    // Identify current state of the BLDC.
+    {
+        let ControlHardware {
+            ref mut current_sensor,
+            ref mut encoder,
+            ..
+        } = loop_vars.hw;
 
-    // TODO(blakely): use this.
-    loop_vars.hw.encoder.update(1. / 40000.);
+        // First off: acknowledge the end of sampling signal in the ADC. Required otherwise the ADC
+        // will immediately trigger another interrupt, regardless of whether the IRQ was cleared in
+        // the NVIC above.
+        current_sensor.acknowledge_eos();
+
+        // Next, grab the encoder angle and update velocity and acceleration.
+
+        // TODO(blakely): pull the frequency from the commutation state.
+        encoder.update(1. / 40000.);
+
+        // Sample ADCs in the meantime
+        let phase_currents = current_sensor.sample();
+
+        // Get the current rail voltage.
+        let v_bus = current_sensor.v_bus();
+
+        // Update the state
+        loop_vars.sensor_state = Some(SensorState::new(
+            encoder.angle_state(),
+            encoder.state(),
+            &phase_currents,
+            v_bus,
+        ));
+    }
 
     // If there's a control callback, call it. Otherwise just idle.
     let commutator = match loop_vars.control_loop {
@@ -43,8 +63,12 @@ fn ADC1_2() {
         _ => return,
     };
 
-    match commutator.commutate(&mut loop_vars.hw) {
-        LoopState::Finished => {
+    // Unwrap should be fine here. We're in the interrupt handler and the highest priority, so
+    // nothing should be able to preempt us between when we set it above and now.
+    let sensor_state = &loop_vars.sensor_state.as_ref().unwrap();
+
+    match commutator.commutate(sensor_state, &mut loop_vars.hw) {
+        CommutationLoop::Finished => {
             let pwm = &mut loop_vars.hw.pwm;
             // Make sure we pull all phases low in case the control loops didn't. Better safe than
             // sorry...
