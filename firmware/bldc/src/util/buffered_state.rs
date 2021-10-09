@@ -11,12 +11,12 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-pub struct BufferedState<T: Sized + Copy> {
+pub struct BufferedState<T: Copy> {
     current: AtomicUsize,
     value: [T; 2],
 }
 
-impl<'a, T: Sized + Copy> BufferedState<T> {
+impl<'a, T: Copy> BufferedState<T> {
     // Creates a BufferedState
     pub fn new(initial_state: T) -> Self {
         BufferedState {
