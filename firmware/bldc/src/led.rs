@@ -1,5 +1,7 @@
 use core::marker::PhantomData;
 
+use stm32g4::stm32g474::GPIOB;
+
 // Badly hacked LED control :(
 
 pub struct Red {}
@@ -20,12 +22,16 @@ impl<T> Led<T> {
         C: FnMut() -> R,
         Self: LedBit,
     {
+        // Safety: atomic write to bit set/reset regsiter with no side effects.
         unsafe {
-            *(0x4800_0418 as *mut u32) = 1 << Self::bit();
+            (*GPIOB::ptr()).bsrr.write(|w| w.bits(1 << Self::bit()));
         }
         let retval = callback();
+        // Safety: atomic write to bit set/reset regsiter with no side effects.
         unsafe {
-            *(0x4800_0418 as *mut u32) = 1 << (Self::bit() + 16);
+            (*GPIOB::ptr())
+                .bsrr
+                .write(|w| w.bits(1 << (Self::bit() + 16)));
         }
         retval
     }
