@@ -4,8 +4,9 @@ use crate::{
     encoder::{Encoder, EncoderState},
     ic::ma702::AngleState,
     pwm::PwmOutput,
-    util::interrupts::block_interrupt,
+    util::{interrupts::block_interrupt, seq_lock::SeqLock},
 };
+use lazy_static::lazy_static;
 use stm32g4::stm32g474 as device;
 extern crate alloc;
 use alloc::boxed::Box;
@@ -35,6 +36,7 @@ pub struct ControlHardware {
 }
 
 // TODO(blakely): don't require these to be Copy/Clone; use references instead.
+#[derive(Clone, Copy)]
 pub struct SensorState {
     pub angle_state: AngleState,
     pub encoder_state: EncoderState,
@@ -61,11 +63,13 @@ impl SensorState {
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct CommutationState {
     pub control_loop: Option<Box<dyn ControlLoop>>,
-    pub sensor_state: Option<SensorState>,
     pub hw: ControlHardware,
 }
 
 pub static COMMUTATION_STATE: SpinLock<Option<CommutationState>> = SpinLock::new(None);
+lazy_static! {
+    pub static ref SENSOR_STATE: SeqLock<Option<SensorState>> = SeqLock::new(None);
+}
 
 pub struct Commutator {}
 
@@ -76,7 +80,6 @@ impl Commutator {
             .expect("Lock held while trying to donate hardware") = Some(CommutationState {
             control_loop: None,
             hw,
-            sensor_state: None,
         });
     }
 
