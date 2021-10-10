@@ -1,11 +1,19 @@
+#[cfg(target_os = "none")]
 use core::cell::Cell;
+#[cfg(target_os = "none")]
 use core::marker::PhantomData;
+#[cfg(target_os = "none")]
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[cfg(target_os = "none")]
 use scopeguard::defer;
 
+#[cfg(target_os = "none")]
 const EMPTY: usize = 0;
+#[cfg(target_os = "none")]
 const LOADING: usize = 1;
+#[cfg(target_os = "none")]
 const LOADED: usize = 2;
+#[cfg(target_os = "none")]
 const LOCKED: usize = 3;
 
 /// A mechanism for loaning a reference to an interrupt handler (or another
@@ -65,7 +73,7 @@ impl<T> IRef<T> {
     /// or from multiple threads simultaneously.
     pub fn donate<'env, F, R>(&self, val: &'env mut F, scope: impl FnOnce() -> R) -> R
     where
-        F: FnMut<T, Output=()>,
+        F: FnMut<T, Output = ()>,
         F: Send + 'env,
     {
         let r = self
@@ -75,7 +83,7 @@ impl<T> IRef<T> {
 
         // Construct a FnMut fat pointer to our closure, and then erase its
         // type.
-        let val: &mut (dyn FnMut<T, Output=()> + Send + 'env) = val;
+        let val: &mut (dyn FnMut<T, Output = ()> + Send + 'env) = val;
         // Safety: we only reinterpret these bits as the same type used above
         // but with *narrower* lifetime.
         let val: (usize, usize) = unsafe { core::mem::transmute(val) };
@@ -122,9 +130,7 @@ impl<T> IRef<T> {
     /// code that will busy-wait).
     pub fn observe<R, F>(&self, body: F) -> Option<R>
     where
-        F: FnOnce(
-            &mut (dyn FnMut<T, Output=()> + Send),
-        ) -> R,
+        F: FnOnce(&mut (dyn FnMut<T, Output = ()> + Send)) -> R,
     {
         self.state
             .compare_exchange(LOADED, LOCKED, Ordering::Acquire, Ordering::Relaxed)

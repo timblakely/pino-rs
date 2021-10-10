@@ -1,3 +1,4 @@
+#![cfg(not(feature = "host_test"))]
 use alloc_cortex_m::CortexMHeap;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
@@ -17,6 +18,7 @@ fn oom(_: Layout) -> ! {
 }
 
 // Install the global allocator.
+#[cfg(not(feature = "host_test"))]
 #[global_allocator]
 static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
 

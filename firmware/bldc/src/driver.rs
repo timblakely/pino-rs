@@ -9,6 +9,7 @@ use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
 use crate::current_sensing;
 use crate::encoder::Encoder;
+#[cfg(not(feature = "host_test"))]
 use crate::memory::initialize_heap;
 use crate::pwm::PwmOutput;
 use crate::timer::TimerConfig;
@@ -41,6 +42,7 @@ pub struct Init {
     pub spi1: device::SPI1,
     pub spi3: device::SPI3,
     pub tim1: device::TIM1,
+    pub tim2: device::TIM2,
     pub tim3: device::TIM3,
     pub dma1: device::DMA1,
     pub dmamux: device::DMAMUX,
@@ -65,6 +67,7 @@ pub struct Ready {
 pub fn take_hardware() -> Driver<Init> {
     // First, initialize the heap so that we can set the control loop callback dynamically. We do
     // this as early as possible
+    #[cfg(not(feature = "host_test"))]
     initialize_heap();
 
     let cp = cm::Peripherals::take().unwrap();
@@ -85,6 +88,7 @@ pub fn take_hardware() -> Driver<Init> {
         p.SPI1,
         p.SPI3,
         p.TIM1,
+        p.TIM2,
         p.TIM3,
         p.DMA1,
         p.DMAMUX,
@@ -111,6 +115,7 @@ fn init(
     spi1: device::SPI1,
     spi3: device::SPI3,
     tim1: device::TIM1,
+    tim2: device::TIM2,
     tim3: device::TIM3,
     dma1: device::DMA1,
     dmamux: device::DMAMUX,
@@ -199,6 +204,7 @@ fn init(
             spi1,
             spi3,
             tim1,
+            tim2,
             tim3,
             dma1,
             dmamux,

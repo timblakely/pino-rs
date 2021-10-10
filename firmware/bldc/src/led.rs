@@ -3,6 +3,7 @@ use core::marker::PhantomData;
 use stm32g4::stm32g474::GPIOB;
 
 // Badly hacked LED control :(
+// TODO(blakely): TIM4 should be used for BLDCV1 if we ever want to PWM the LEDs.
 
 pub struct Red {}
 pub struct Green {}
