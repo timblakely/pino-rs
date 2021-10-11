@@ -51,4 +51,3 @@ bench = false
 name = "bldc"
 test = false
 bench = false
-doctest = false
