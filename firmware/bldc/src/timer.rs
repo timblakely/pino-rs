@@ -102,7 +102,7 @@ pub fn iteratively_calculate_timer_config(
 
 struct Scheduler {
     pub tim2: device::TIM2,
-    pub control_loop: Option<Box<dyn FnMut()>>,
+    pub callback: Option<Box<dyn FnMut()>>,
 }
 unsafe impl Send for Scheduler {}
 
@@ -121,7 +121,7 @@ pub fn donate_hardware_for_scheduler(tim2: device::TIM2) {
     // But _don't_ start it now in case we don't need it. Just store it for later use
     *SCHEDULER.lock() = Some(Scheduler {
         tim2,
-        control_loop: None,
+        callback: None,
     });
 }
 
@@ -130,7 +130,7 @@ pub fn periodic_callback(frequency: f32, tolerance: f32, callback: impl FnMut())
         let boxed: Box<dyn FnMut()> = Box::new(callback);
         // Safety: in order to store something in a global static, it _must_ have a 'static lifetime,
         // even if it's stored on the heap (???). So this transmutes it to a static lifetime.
-        scheduler.control_loop = unsafe { core::mem::transmute(Some(boxed)) };
+        scheduler.callback = unsafe { core::mem::transmute(Some(boxed)) };
 
         // Configure the timer now.
         let timer_config = iteratively_calculate_timer_config(170_000_000, frequency, tolerance)
@@ -145,6 +145,12 @@ pub fn periodic_callback(frequency: f32, tolerance: f32, callback: impl FnMut())
             .write(|w| unsafe { w.bits(timer_config.arr as u32) });
         // Enable the timer
         tim2.cr1.modify(|_, w| w.cen().enabled());
+    });
+}
+
+pub fn stop_periodic_callback() {
+    block_interrupt(device::Interrupt::TIM2, &SCHEDULER, |mut scheduler| {
+        scheduler.tim2.cr1.modify(|_, w| w.cen().disabled());
     });
 }
 
@@ -164,7 +170,10 @@ fn TIM2() {
         cortex_m::asm::nop();
     });
 
-    let scheduler = acquire_hw(&SCHEDULER);
+    let mut scheduler = acquire_hw(&SCHEDULER);
 
     scheduler.tim2.sr.modify(|_, w| w.uif().clear_bit());
+    if let Some(ref mut callback) = scheduler.callback {
+        callback();
+    }
 }

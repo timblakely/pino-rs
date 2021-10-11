@@ -112,6 +112,33 @@ fn spin(port: &mut dyn SerialPort) {
     });
 }
 
+fn start_stream(port: &mut dyn SerialPort, frequency: f32) {
+    let msg = FdcanMessage::new(
+        Message::BeginStateStream,
+        [frequency.to_le_bytes()].concat(),
+    );
+
+    println!("Writing bytes: {}", msg);
+
+    time_it("Write", || {
+        time_it("write", || {
+            port.write(&msg.to_bytes()).expect("Failed to write");
+        });
+    });
+}
+
+fn stop_stream(port: &mut dyn SerialPort) {
+    let msg = FdcanMessage::new(Message::EndStateStream, [0].to_vec());
+
+    println!("Writing bytes: {}", msg);
+
+    time_it("Write", || {
+        time_it("write", || {
+            port.write(&msg.to_bytes()).expect("Failed to write");
+        });
+    });
+}
+
 fn main() {
     let matches = App::new("Fdcom")
         .version("0.0.1")
@@ -120,6 +147,17 @@ fn main() {
         .arg(Arg::with_name("port").short("p").value_name("PORT"))
         .subcommand(SubCommand::with_name("ezero").about("dummy signal for Ezero"))
         .subcommand(SubCommand::with_name("spin").about("Spin  motor for one second"))
+        .subcommand(
+            SubCommand::with_name("start_stream")
+                .about("Start state stream")
+                .arg(
+                    Arg::with_name("frequency")
+                        .short("f")
+                        .value_name("FREQUENCY")
+                        .required(true),
+                ),
+        )
+        .subcommand(SubCommand::with_name("stop_stream").about("Stop state stream"))
         .get_matches();
 
     if let Some(_) = matches.subcommand_matches("list") {
@@ -143,6 +181,15 @@ fn main() {
     match matches.subcommand() {
         ("ezero", Some(_sub_m)) => e_zero(&mut *port),
         ("spin", Some(_sub_m)) => spin(&mut *port),
+        ("start_stream", Some(sub_m)) => start_stream(
+            &mut *port,
+            sub_m
+                .value_of("frequency")
+                .unwrap()
+                .parse::<f32>()
+                .expect("Can't parse frequency"),
+        ),
+        ("stop_stream", Some(_sub_m)) => stop_stream(&mut *port),
         _ => {}
     }
 }

@@ -16,4 +16,8 @@ pub enum Message {
     TorqueControl = 0x17,
     PosVelControl = 0x18,
     PosVelCommand = 0x19,
+
+    BeginStateStream = 0x1A,
+    SensorState = 0x1B,
+    EndStateStream = 0x1C,
 }

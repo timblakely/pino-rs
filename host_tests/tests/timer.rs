@@ -61,4 +61,17 @@ mod tests {
             })
         ));
     }
+
+    #[test]
+    fn odd_failure() {
+        let calculation = iteratively_calculate_timer_config(170_000_000, 1150., 0.01)
+            .expect("Unable to get timing");
+        assert!(matches!(
+            calculation,
+            TimerCalculation::Approximate(TimerConfig {
+                prescalar: 1470,
+                arr: 65010,
+            })
+        ));
+    }
 }
