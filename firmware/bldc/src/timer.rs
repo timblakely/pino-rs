@@ -52,7 +52,7 @@ pub fn iteratively_calculate_timer_config(
     tolerance: f32,
 ) -> Option<TimerCalculation> {
     let mut prescalar: u16 = 1;
-    let mut diff = u32::MAX;
+    let mut diff = f32::MAX;
     let mut closest_arr = u16::MAX;
     let mut closest_prescalar: u16 = 1;
     loop {
@@ -61,14 +61,14 @@ pub fn iteratively_calculate_timer_config(
             arr: arr as u16,
             prescalar,
         };
-        let current_diff = (config.frequency(core_clock_hz) - desired_frequency).abs() as u32;
+        let current_diff = (config.frequency(core_clock_hz) - desired_frequency).abs();
         if arr < (1 << 16) {
             if current_diff < diff {
                 closest_prescalar = prescalar;
                 closest_arr = arr as u16;
                 diff = current_diff;
             }
-            if current_diff == 0 {
+            if current_diff == 0. {
                 return Some(TimerCalculation::Exact(TimerConfig {
                     prescalar: closest_prescalar,
                     arr: closest_arr,
