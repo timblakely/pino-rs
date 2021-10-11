@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  "host_tests",
   "tools/fdcom",
+  "host_tests",
   "messages",
 ]
 exclude = [ "./firmware" ]

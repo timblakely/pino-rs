@@ -9,7 +9,7 @@ use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
 use crate::current_sensing;
 use crate::encoder::Encoder;
-#[cfg(not(feature = "host_test"))]
+#[cfg(not(feature = "host"))]
 use crate::memory::initialize_heap;
 use crate::pwm::PwmOutput;
 use crate::timer::TimerConfig;
@@ -67,7 +67,7 @@ pub struct Ready {
 pub fn take_hardware() -> Driver<Init> {
     // First, initialize the heap so that we can set the control loop callback dynamically. We do
     // this as early as possible
-    #[cfg(not(feature = "host_test"))]
+    #[cfg(not(feature = "host"))]
     initialize_heap();
 
     let cp = cm::Peripherals::take().unwrap();
