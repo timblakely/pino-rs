@@ -41,7 +41,10 @@
                 "BLDC Size Debug"
             ],
             "problemMatcher": [],
-            "group": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "options": {
                 "cwd": "firmware"
             }
@@ -86,10 +89,7 @@
                 "BLDC Size Release"
             ],
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
+            "group": "build",
             "options": {
                 "cwd": "firmware"
             }

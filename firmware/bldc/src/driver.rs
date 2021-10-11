@@ -7,7 +7,6 @@ use crate::comms::fdcan::{Fdcan, IncomingFdcanFrame, Running};
 use crate::commutation::calibrate_adc::CalibrateADC;
 use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
-use crate::current_sensing;
 use crate::encoder::Encoder;
 #[cfg(not(feature = "host"))]
 use crate::memory::initialize_heap;
@@ -16,6 +15,7 @@ use crate::timer::TimerConfig;
 use crate::util::stm32::{
     clock_setup, clocks::G4_CLOCK_SETUP, disable_dead_battery_pd, donate_systick,
 };
+use crate::{current_sensing, timer};
 use crate::{ic::drv8323rs, ic::ma702};
 extern crate alloc;
 use cortex_m::peripheral as cm;
@@ -163,7 +163,7 @@ fn init(
     rcc.ahb2enr
         .modify(|_, w| w.adc12en().enabled().adc345en().enabled());
     rcc.apb1enr1
-        .modify(|_, w| w.fdcanen().enabled().tim3en().enabled());
+        .modify(|_, w| w.fdcanen().enabled().tim2en().enabled().tim3en().enabled());
     rcc.apb2enr
         .modify(|_, w| w.spi1en().enabled().tim1en().enabled());
 
@@ -188,8 +188,10 @@ fn init(
     unsafe {
         // Ensure that the control loop is at the absolute highest priority.
         nvic.set_priority(device::Interrupt::ADC1_2, 0x0);
-        // Next is the DMA request reading the MA702.
+        // Next is the DMA request reading the MA702 (if used).
         nvic.set_priority(device::Interrupt::DMA1_CH2, 0x10);
+        // The periodic callback on TIM2 is low priority.
+        nvic.set_priority(device::Interrupt::TIM2, 0xFF);
         // Finally the FDCAN.
         nvic.set_priority(device::Interrupt::FDCAN1_INTR0_IT, 0xFF);
         nvic.set_priority(device::Interrupt::FDCAN1_INTR1_IT, 0xFF);
@@ -461,6 +463,12 @@ impl Driver<Init> {
             .enable(|| gpioc.bsrr.write(|w| w.bs6().set_bit()))
             .calibrate();
 
+        timer::donate_hardware_for_scheduler(self.mode_state.tim2);
+
+        timer::periodic_callback(1000., 0.001, || {
+            let _asdf = 1;
+        });
+
         // Set up current sensing.
         // Set up the ADC clocks. We're assuming we're running on a 170MHz AHB bus, so div=4 gives
         // us 42.5MHz (below max freq of 60MHz for single or 52MHz for multiple channels).
@@ -552,6 +560,7 @@ impl Driver<Calibrating> {
         let block = AtomicBool::new(true);
 
         Commutator::enable_loop();
+
         Commutator::set(CalibrateADC::new(2., |_| {
             block.store(false, Ordering::Release);
         }));

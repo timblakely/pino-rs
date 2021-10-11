@@ -1,6 +1,17 @@
-use num_traits::float::FloatCore;
+extern crate alloc;
 
-#[derive(Debug)]
+use alloc::boxed::Box;
+use num_traits::float::FloatCore;
+use stm32g4::stm32g474::{self as device, interrupt};
+use third_party::m4vga_rs::util::{
+    armv7m::{clear_pending_irq, enable_irq},
+    spin_lock::SpinLock,
+    sync::acquire_hw,
+};
+
+use crate::{block_until, block_while, led, util::interrupts::block_interrupt};
+
+#[derive(Debug, Clone, Copy)]
 pub struct TimerConfig {
     pub prescalar: u16,
     pub arr: u16,
@@ -26,10 +37,10 @@ pub enum TimerCalculation {
 }
 
 impl TimerCalculation {
-    pub fn config(&self) -> &TimerConfig {
+    pub fn config(&self) -> TimerConfig {
         match self {
-            Self::Approximate(x) => x,
-            Self::Exact(x) => x,
+            Self::Approximate(x) => *x,
+            Self::Exact(x) => *x,
         }
     }
 }
@@ -87,4 +98,73 @@ pub fn iteratively_calculate_timer_config(
             return None;
         }
     }
+}
+
+struct Scheduler {
+    pub tim2: device::TIM2,
+    pub control_loop: Option<Box<dyn FnMut()>>,
+}
+unsafe impl Send for Scheduler {}
+
+static SCHEDULER: SpinLock<Option<Scheduler>> = SpinLock::new(None);
+
+// Configure TIM2 for use as an optional scheduled callback.
+pub fn donate_hardware_for_scheduler(tim2: device::TIM2) {
+    enable_irq(device::Interrupt::TIM2);
+    // Stop the timer if it's running for some reason.
+    tim2.cr1.modify(|_, w| w.cen().disabled());
+    block_until!(tim2.cr1.read().cen().bit_is_clear());
+    // Up counting, edge-aligned mode.
+    tim2.cr1.modify(|_, w| w.dir().up().cms().edge_aligned());
+    // Enable interrupt on Update
+    tim2.dier.modify(|_, w| w.uie().enabled());
+    // But _don't_ start it now in case we don't need it. Just store it for later use
+    *SCHEDULER.lock() = Some(Scheduler {
+        tim2,
+        control_loop: None,
+    });
+}
+
+pub fn periodic_callback(frequency: f32, tolerance: f32, callback: impl FnMut()) {
+    block_interrupt(device::Interrupt::TIM2, &SCHEDULER, |mut scheduler| {
+        let boxed: Box<dyn FnMut()> = Box::new(callback);
+        // Safety: in order to store something in a global static, it _must_ have a 'static lifetime,
+        // even if it's stored on the heap (???). So this transmutes it to a static lifetime.
+        scheduler.control_loop = unsafe { core::mem::transmute(Some(boxed)) };
+
+        // Configure the timer now.
+        let timer_config = iteratively_calculate_timer_config(170_000_000, frequency, tolerance)
+            .expect("Unable to find appropriate timing")
+            .config();
+        let tim2 = &mut scheduler.tim2;
+        // We subtract one here since the PSC field of this register is actually `prescalar - 1`
+        tim2.psc.write(|w| w.psc().bits(timer_config.prescalar - 1));
+        // Safety: Upstream PAC needs bounds. TIM2 is a 32 bit timer, and we're setting at max 16
+        // bits here.
+        tim2.arr
+            .write(|w| unsafe { w.bits(timer_config.arr as u32) });
+        // Enable the timer
+        tim2.cr1.modify(|_, w| w.cen().enabled());
+    });
+}
+
+// Interrupt handler triggered by TIM2's update event.
+#[interrupt]
+fn TIM2() {
+    // Clear the IRQ so it doesn't immediately fire again.
+    clear_pending_irq(device::Interrupt::TIM2);
+    led::Led::<led::Green>::on_while(|| {
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+        cortex_m::asm::nop();
+    });
+
+    let scheduler = acquire_hw(&SCHEDULER);
+
+    scheduler.tim2.sr.modify(|_, w| w.uif().clear_bit());
 }
