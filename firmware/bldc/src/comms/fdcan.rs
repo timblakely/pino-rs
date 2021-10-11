@@ -462,12 +462,12 @@ pub trait OutgoingFdcanFrame {
 
 #[interrupt]
 fn FDCAN1_INTR0_IT() {
-    fdcan1_tx_isr();
     clear_pending_irq(device::Interrupt::FDCAN1_INTR0_IT);
+    fdcan1_tx_isr();
 }
 
 #[interrupt]
 fn FDCAN1_INTR1_IT() {
-    fdcan1_rx_isr();
     clear_pending_irq(device::Interrupt::FDCAN1_INTR1_IT);
+    fdcan1_rx_isr();
 }
