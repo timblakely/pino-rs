@@ -1,17 +1,17 @@
 #![cfg_attr(not(test), no_std)]
 #![no_main]
 
+use bldc::comms::messages::Message;
 use bldc::{
-    comms::fdcan::{self, IncomingFdcanFrame, OutgoingFdcanFrame},
+    comms::fdcan::{self, IncomingFdcanFrame},
     commutation::{
         calibrate_e_zero::{CalibrateEZeroCmd, EZeroMsg},
         pos_vel_control::{PosVelCommand, PosVelControl, PosVelMode},
         torque_control::{TorqueControl, TorqueControlCmd},
-        Commutator, SensorState, SENSOR_STATE,
+        Commutator, SENSOR_STATE,
     },
     driver, timer,
 };
-use messages::Message;
 
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;

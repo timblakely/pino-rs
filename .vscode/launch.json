@@ -11,7 +11,7 @@
             "request": "launch",
             "name": "BLDC Debug",
             "servertype": "openocd",
-            "cwd": "${workspaceRoot}/firmware",
+            "cwd": "${workspaceRoot}",
             "preLaunchTask": "BLDC debug",
             "runToMain": true,
             "executable": "./target/thumbv7em-none-eabihf/debug/bldc",
@@ -77,7 +77,7 @@
             "request": "launch",
             "name": "BLDC Release",
             "servertype": "openocd",
-            "cwd": "${workspaceRoot}/firmware",
+            "cwd": "${workspaceRoot}",
             "preLaunchTask": "BLDC release",
             "runToMain": true,
             "executable": "./target/thumbv7em-none-eabihf/release/bldc",
@@ -132,70 +132,6 @@
                 "-s",
                 "./tools/openocd.gdb"
             ]
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug fdcom",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=fdcom",
-                    "--package=fdcom"
-                ],
-                "filter": {
-                    "name": "fdcom",
-                    "kind": "bin"
-                }
-            },
-            "args": [
-                "-p",
-                "/dev/fdcanusb",
-                "ezero"
-            ],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug tests in 'fdcom'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=fdcom",
-                    "--package=fdcom"
-                ],
-                "filter": {
-                    "name": "fdcom",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}/tools",
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Release fdcom",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=fdcom",
-                    "--package=fdcom",
-                    "--release",
-                ],
-                "filter": {
-                    "name": "fdcom",
-                    "kind": "bin"
-                }
-            },
-            "args": [
-                "-p",
-                "/dev/fdcanusb",
-                "ezero"
-            ],
-            "cwd": "${workspaceFolder}"
         },
     ]
 }

@@ -18,10 +18,4 @@
     "breakin"
   ],
   "lldb.showDisassembly": "auto",
-  "rust-analyzer.linkedProjects": [
-    // order is important (rust-analyzer/rust-analyzer#7764)
-    "Cargo.toml",
-    "messages/Cargo.toml",
-    "firmware/Cargo.toml",
-  ]
 }

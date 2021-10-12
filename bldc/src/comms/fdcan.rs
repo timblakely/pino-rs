@@ -12,7 +12,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 use heapless::FnvIndexMap;
 
-use messages::Message;
+use crate::comms::messages::Message;
 use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;

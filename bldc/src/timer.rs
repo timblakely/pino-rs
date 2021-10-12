@@ -149,7 +149,7 @@ pub fn periodic_callback(frequency: f32, tolerance: f32, callback: impl FnMut())
 }
 
 pub fn stop_periodic_callback() {
-    block_interrupt(device::Interrupt::TIM2, &SCHEDULER, |mut scheduler| {
+    block_interrupt(device::Interrupt::TIM2, &SCHEDULER, |scheduler| {
         scheduler.tim2.cr1.modify(|_, w| w.cen().disabled());
     });
 }

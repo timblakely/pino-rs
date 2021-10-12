@@ -1,10 +1,8 @@
 [workspace]
 members = [
-  "tools/fdcom",
-  "host_tests",
-  "messages",
+  "bldc",
+  "third_party",
 ]
-exclude = [ "./firmware" ]
 
 [profile.release]
 codegen-units = 1 # better optimizations

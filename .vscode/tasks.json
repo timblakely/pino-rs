@@ -14,9 +14,6 @@
                 "$rustc"
             ],
             "group": "build",
-            "options": {
-                "cwd": "firmware"
-            }
         },
         {
             "label": "BLDC Size Debug",
@@ -29,9 +26,6 @@
             "problemMatcher": [
                 "$rustc"
             ],
-            "options": {
-                "cwd": "firmware"
-            }
         },
         {
             "label": "BLDC debug",
@@ -42,9 +36,6 @@
             ],
             "problemMatcher": [],
             "group": "build",
-            "options": {
-                "cwd": "firmware"
-            }
         },
         {
             "label": "BLDC Release",
@@ -58,9 +49,6 @@
                 "$rustc"
             ],
             "group": "build",
-            "options": {
-                "cwd": "firmware"
-            }
         },
         {
             "label": "BLDC Size Release",
@@ -74,9 +62,6 @@
             "problemMatcher": [
                 "$rustc"
             ],
-            "options": {
-                "cwd": "firmware"
-            }
         },
         {
             "label": "BLDC release",
@@ -90,9 +75,6 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "options": {
-                "cwd": "firmware"
-            }
         },
         {
             "label": "Cargo Clean",
@@ -104,30 +86,5 @@
             "problemMatcher": [],
             "group": "build"
         },
-        {
-            "label": "Fdcom debug",
-            "type": "process",
-            "command": "cargo",
-            "args": [
-                "build"
-            ],
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "build"
-        },
-        {
-            "label": "Fdcom release",
-            "type": "process",
-            "command": "cargo",
-            "args": [
-                "build",
-                "--release"
-            ],
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "build"
-        }
     ]
 }

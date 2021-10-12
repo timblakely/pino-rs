@@ -1,5 +1,8 @@
 use crate::{
-    comms::fdcan::{self, FdcanMessage, OutgoingFdcanFrame},
+    comms::{
+        fdcan::{FdcanMessage, OutgoingFdcanFrame},
+        messages::Message,
+    },
     cordic::Cordic,
     current_sensing::{self, CurrentSensor, PhaseCurrents},
     encoder::{Encoder, EncoderState},
@@ -139,7 +142,7 @@ pub trait ControlLoop: Send {
 impl OutgoingFdcanFrame for SensorState {
     fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
         FdcanMessage::new(
-            messages::Message::SensorState,
+            Message::SensorState,
             &[
                 self.angle_state.angle.in_radians().to_bits(),
                 self.angle_state.angle_multiturn.in_radians().to_bits(),

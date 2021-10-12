@@ -1,4 +1,3 @@
-#![cfg_attr(not(test), no_std)]
 // Emergency Stop message.
 pub struct EStop {}
 

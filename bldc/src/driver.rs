@@ -1,6 +1,4 @@
-use core::sync::atomic::{AtomicBool, Ordering};
-
-use messages::Message;
+use crate::comms::messages::Message;
 
 use crate::comms::fdcan::{self};
 use crate::comms::fdcan::{Fdcan, IncomingFdcanFrame, Running};
