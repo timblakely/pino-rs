@@ -7,6 +7,7 @@ use crate::{
     pwm::PwmOutput,
     util::{interrupts::block_interrupt, seq_lock::SeqLock},
 };
+use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 use stm32g4::stm32g474 as device;
 extern crate alloc;
@@ -72,6 +73,8 @@ lazy_static! {
     pub static ref SENSOR_STATE: SeqLock<Option<SensorState>> = SeqLock::new(None);
 }
 
+pub static COMMUTATING: AtomicBool = AtomicBool::new(false);
+
 pub struct Commutator {}
 
 impl Commutator {
@@ -84,10 +87,9 @@ impl Commutator {
         });
     }
 
-    pub fn set<'a>(commutator: impl ControlLoop + 'a) {
+    pub fn set(commutator: impl ControlLoop + 'static) {
         block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
-            let boxed: Box<dyn ControlLoop> = Box::new(commutator);
-            vars.control_loop = unsafe { core::mem::transmute(Some(boxed)) };
+            vars.control_loop = Some(Box::new(commutator));
         });
     }
 
@@ -96,9 +98,14 @@ impl Commutator {
             device::interrupt::ADC1_2,
             &COMMUTATION_STATE,
             |mut control_vars| {
+                COMMUTATING.store(true, Ordering::Relaxed);
                 control_vars.hw.pwm.enable_loop();
             },
         );
+    }
+
+    pub fn is_enabled() -> bool {
+        COMMUTATING.load(Ordering::Acquire)
     }
 
     // TODO(blakely): Don't disable the loop until currents have settled down low enough.
@@ -107,6 +114,7 @@ impl Commutator {
             device::interrupt::ADC1_2,
             &COMMUTATION_STATE,
             |mut control_vars| {
+                COMMUTATING.store(false, Ordering::Relaxed);
                 control_vars.hw.pwm.disable_loop();
             },
         );

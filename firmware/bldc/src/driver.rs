@@ -557,14 +557,9 @@ impl Driver<Init> {
 
 impl Driver<Calibrating> {
     pub fn calibrate(self) -> Driver<Ready> {
-        let block = AtomicBool::new(true);
-
         Commutator::enable_loop();
-
-        Commutator::set(CalibrateADC::new(2., |_| {
-            block.store(false, Ordering::Release);
-        }));
-        while block.load(Ordering::Acquire) {}
+        Commutator::set(CalibrateADC::new(2., move |_| {}));
+        while Commutator::is_enabled() {}
         Commutator::disable_loop();
 
         Driver {

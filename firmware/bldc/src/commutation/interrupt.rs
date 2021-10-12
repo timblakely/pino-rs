@@ -3,7 +3,9 @@ use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
 use crate::led::{self, Led};
 
-use super::{CommutationLoop, ControlHardware, SensorState, COMMUTATION_STATE, SENSOR_STATE};
+use super::{
+    CommutationLoop, ControlHardware, SensorState, COMMUTATING, COMMUTATION_STATE, SENSOR_STATE,
+};
 
 // Interrupt handler triggered by TIM1[CH4]'s tim_trgo2. Under normal circumstances this function
 // will be called continuously, regardless of the control loop in place. Note that the control loop
@@ -63,12 +65,15 @@ fn commutate() {
         _ => return,
     };
 
+    COMMUTATING.store(true, core::sync::atomic::Ordering::Relaxed);
+
     // Unwrap should be fine here. We're in the interrupt handler and the highest priority, so
     // nothing should be able to preempt us between when we set it above and now.
     let sensor_state = &SENSOR_STATE.read().unwrap();
 
     match commutator.commutate(sensor_state, &mut loop_vars.hw) {
         CommutationLoop::Finished => {
+            COMMUTATING.store(false, core::sync::atomic::Ordering::Relaxed);
             let pwm = &mut loop_vars.hw.pwm;
             // Make sure we pull all phases low in case the control loops didn't. Better safe than
             // sorry...
