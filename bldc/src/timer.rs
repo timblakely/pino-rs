@@ -1,6 +1,7 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
+#[cfg(not(feature = "host"))]
 use num_traits::float::FloatCore;
 use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::{

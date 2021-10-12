@@ -7,6 +7,7 @@ use crate::{
     pi_controller::PIController,
     pwm::PwmDuty,
 };
+#[cfg(not(feature = "host"))]
 use num_traits::float::FloatCore;
 
 // Control current for a single phase.
