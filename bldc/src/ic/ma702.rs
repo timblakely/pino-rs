@@ -24,7 +24,7 @@ pub struct AngleState {
     pub angle: Angle, // Radians
     pub velocity: Angle,
     pub acceleration: Angle,
-    pub turns: u32,
+    pub turns: i32,
     pub angle_multiturn: Angle,
 }
 
