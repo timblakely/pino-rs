@@ -46,6 +46,7 @@ pub struct SensorState {
     pub angle_state: AngleState,
     pub encoder_state: EncoderState,
     pub currents: PhaseCurrents,
+    pub observer_state: (f32, f32),
     pub v_bus: f32,
 }
 
@@ -54,12 +55,14 @@ impl SensorState {
         angle_state: &AngleState,
         encoder_state: &EncoderState,
         currents: &PhaseCurrents,
+        observer_state: (f32, f32),
         v_bus: f32,
     ) -> SensorState {
         SensorState {
             angle_state: *angle_state,
             encoder_state: *encoder_state,
             currents: *currents,
+            observer_state,
             v_bus,
         }
     }
@@ -147,6 +150,8 @@ impl OutgoingFdcanFrame for SensorState {
                 self.angle_state.angle.in_radians().to_bits(),
                 self.angle_state.angle_multiturn.in_radians().to_bits(),
                 self.angle_state.velocity.in_radians().to_bits(),
+                self.observer_state.0.to_bits(),
+                self.observer_state.1.to_bits(),
             ],
         )
     }

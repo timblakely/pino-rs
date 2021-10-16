@@ -55,6 +55,7 @@ fn commutate() {
             encoder.angle_state(),
             encoder.state(),
             &phase_currents,
+            encoder.observer_state(),
             v_bus,
         ));
     }
