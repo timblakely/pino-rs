@@ -454,7 +454,7 @@ impl Driver<Init> {
             .configure_spi()
             .begin_stream_polling(self.mode_state.dma1, &self.mode_state.dmamux);
 
-        let encoder = Encoder::new(ma702, 21, 1000.);
+        let encoder = Encoder::new(ma702, 21, 20.);
 
         let gpioc = &self.mode_state.gpioc;
         let drv = drv8323rs::new(self.mode_state.spi3)

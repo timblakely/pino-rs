@@ -368,7 +368,7 @@ fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState
         d_angle if d_angle.in_radians() < -PI => {
             // Rolled over forwards.
             turns += 1;
-            Angle::Radians(d_angle.in_radians() - TWO_PI)
+            Angle::Radians(d_angle.in_radians() + TWO_PI)
         }
         d_angle => d_angle,
     };
