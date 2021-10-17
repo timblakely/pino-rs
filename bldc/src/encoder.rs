@@ -87,6 +87,7 @@ struct PllObserverRadians {
     min_d_theta: Angle,
     angle: Angle,
     velocity: Angle,
+    init: bool,
 }
 
 impl PllObserverRadians {
@@ -122,17 +123,30 @@ impl PllObserverRadians {
             angle: Angle::Radians(0.),
             velocity: Angle::Radians(0.),
             min_d_theta,
+            init: false,
         }
     }
 
     pub fn update(&mut self, dt: f32, new_reading: Angle) -> (f32, f32) {
+        if !self.init {
+            self.angle = new_reading;
+            self.velocity = Angle::Radians(0.);
+            self.init = true;
+            return (new_reading.in_radians(), 0.);
+        }
         // Predict the current position.
         self.angle += dt * self.velocity;
         // Discrete phase detector. We need to discretize the continuous (float) prediction above,
         // so we need to figure out if the prediction is ahead or behind of where the actual
         // observed angle is. If our predicted angle is a bit behind and discretization hasn't
         // stepped up to the new value yet, but the encoder _has_, the following will be 1.0f.
-        let d_theta = (new_reading - self.angle).normalized() - Angle::Radians(PI);
+        // let d_theta = (new_reading - self.angle).normalized() - Angle::Radians(PI);
+
+        let d_theta = match new_reading - self.angle {
+            d_angle if d_angle.in_radians() > PI => Angle::Radians(d_angle.in_radians() - TWO_PI),
+            d_angle if d_angle.in_radians() <= -PI => Angle::Radians(d_angle.in_radians() + TWO_PI),
+            d_angle => d_angle,
+        };
 
         let error = match d_theta {
             x if x <= -self.min_d_theta => -1.,
