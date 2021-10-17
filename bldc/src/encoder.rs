@@ -85,9 +85,8 @@ struct PllObserverRadians {
     kp: f32,
     ki: f32,
     min_d_theta: Angle,
-    angle: Angle,
+    angle: Option<Angle>,
     velocity: Angle,
-    init: bool,
 }
 
 impl PllObserverRadians {
@@ -120,34 +119,37 @@ impl PllObserverRadians {
         PllObserverRadians {
             kp,
             ki,
-            angle: Angle::Radians(0.),
+            angle: None,
             velocity: Angle::Radians(0.),
             min_d_theta,
-            init: false,
         }
     }
 
     pub fn update(&mut self, dt: f32, new_reading: Angle) -> (f32, f32) {
-        if !self.init {
-            self.angle = new_reading;
-            self.velocity = Angle::Radians(0.);
-            self.init = true;
-            return (new_reading.in_radians(), 0.);
-        }
-        // Predict the current position.
-        self.angle += dt * self.velocity;
-        // Discrete phase detector. We need to discretize the continuous (float) prediction above,
-        // so we need to figure out if the prediction is ahead or behind of where the actual
-        // observed angle is. If our predicted angle is a bit behind and discretization hasn't
-        // stepped up to the new value yet, but the encoder _has_, the following will be 1.0f.
-        // let d_theta = (new_reading - self.angle).normalized() - Angle::Radians(PI);
+        let previous_angle = match self.angle {
+            Some(x) => x,
+            None => {
+                self.angle = Some(new_reading);
+                self.velocity = Angle::Radians(0.);
+                return (new_reading.in_radians(), 0.);
+            }
+        };
+        let previous_velocity = self.velocity;
 
-        let d_theta = match new_reading - self.angle {
+        // Predict the current position.
+        let angle = previous_angle + dt * previous_velocity;
+
+        // Calculate change in theta.
+        let d_theta = match new_reading - angle {
             d_angle if d_angle.in_radians() > PI => Angle::Radians(d_angle.in_radians() - TWO_PI),
             d_angle if d_angle.in_radians() <= -PI => Angle::Radians(d_angle.in_radians() + TWO_PI),
             d_angle => d_angle,
         };
 
+        // Discrete phase detector. We need to discretize the continuous (float) prediction above,
+        // so we need to figure out if the prediction is ahead or behind of where the actual
+        // observed angle is. If our predicted angle is a bit behind and discretization hasn't
+        // stepped up to the new value yet, but the encoder _has_, the following will be 1.0f.
         let error = match d_theta {
             x if x <= -self.min_d_theta => -1.,
             x if x >= self.min_d_theta => 1.,
@@ -155,11 +157,11 @@ impl PllObserverRadians {
         };
         // Update the predicted angle based on the damping effect of kp, and update the velocity
         // measurement (stiffness?).
-        self.angle += Angle::Radians(dt * self.kp * error);
-        self.angle = self.angle.normalized();
-        self.velocity += Angle::Radians(dt * self.ki * error);
+        let new_angle = (angle + Angle::Radians(dt * self.kp * error)).normalized();
+        self.angle = Some(new_angle);
+        self.velocity = previous_velocity + Angle::Radians(dt * self.ki * error);
 
-        (self.angle.in_radians(), self.velocity.in_radians())
+        (new_angle.in_radians(), self.velocity.in_radians())
     }
 }
 
