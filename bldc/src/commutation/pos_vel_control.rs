@@ -95,8 +95,12 @@ impl ControlLoop for PosVelControl {
         _sensor_state: &SensorState,
         hardware: &mut super::ControlHardware,
     ) -> CommutationLoop {
-        let mech_angle = hardware.encoder.angle_state().angle_multiturn.in_radians();
-        let mech_velocity = hardware.encoder.angle_state().velocity.in_radians();
+        let encoder_state = match hardware.encoder.state() {
+            None => return CommutationLoop::Running,
+            Some(state) => state,
+        };
+        let mech_angle = encoder_state.angle_multiturn.in_radians();
+        let mech_velocity = encoder_state.velocity.in_radians();
 
         let commands = self.commands.read();
 
@@ -111,7 +115,7 @@ impl ControlLoop for PosVelControl {
         // Calculate the required PWM values via field oriented control.
         let phase_voltages = self.foc.update(
             &hardware.current_sensor,
-            &hardware.encoder,
+            &encoder_state,
             &mut hardware.cordic,
             DT,
         );

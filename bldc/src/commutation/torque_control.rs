@@ -45,13 +45,17 @@ impl ControlLoop for TorqueControl {
         hardware: &mut ControlHardware,
     ) -> CommutationLoop {
         Led::<crate::led::Red>::on_while(|| {
+            let encoder_state = match hardware.encoder.state() {
+                None => return CommutationLoop::Running,
+                Some(state) => state,
+            };
             // Get the current rail voltage.
             let v_bus = hardware.current_sensor.v_bus();
 
             // Calculate the required PWM values via field oriented control.
             let phase_voltages = self.foc.update(
                 &hardware.current_sensor,
-                &hardware.encoder,
+                &encoder_state,
                 &mut hardware.cordic,
                 DT,
             );

@@ -54,15 +54,16 @@ impl<'a> ControlLoop for ReadEncoder<'a> {
         let encoder = &hardware.encoder;
         let cordic = &mut hardware.cordic;
 
-        let angle_state = encoder.angle_state();
-        let [cos, sin] = cordic.cos_sin(angle_state.angle).get_result();
+        if let Some(state) = encoder.state() {
+            let [cos, sin] = cordic.cos_sin(state.angle).get_result();
 
-        results.angle = angle_state.angle.in_radians();
-        results.velocity = angle_state.velocity.in_radians();
-        results.e_angle = encoder.electrical_angle().in_radians();
-        results.e_velocity = encoder.electrical_velocity().in_radians();
-        results.a_cos = cos;
-        results.a_sin = sin;
+            results.angle = state.angle.in_radians();
+            results.velocity = state.velocity.in_radians();
+            results.e_angle = state.electrical_angle.in_radians();
+            results.e_velocity = state.electrical_velocity.in_radians();
+            results.a_cos = cos;
+            results.a_sin = sin;
+        }
         CommutationLoop::Finished
     }
 

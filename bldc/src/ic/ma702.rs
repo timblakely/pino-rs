@@ -10,8 +10,6 @@ use third_party::m4vga_rs::util::armv7m::{clear_pending_irq, enable_irq};
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
 use third_party::m4vga_rs::util::sync::acquire_hw;
 
-const FREQ_HZ: f32 = 1000.;
-
 const TWO_PI: f32 = 2. * PI;
 
 // Static location in memory to stream the raw angle measurements to. This has to be a) in a
@@ -19,24 +17,16 @@ const TWO_PI: f32 = 2. * PI;
 pub static mut ANGLE: u16 = 0;
 
 #[derive(Clone, Copy)]
-pub struct AngleState {
-    pub raw_angle: Option<u16>,
-    pub angle: Angle, // Radians
-    pub velocity: Angle,
-    pub acceleration: Angle,
-    pub turns: i32,
-    pub angle_multiturn: Angle,
+pub struct Ma702State {
+    pub raw_angle: u16,
+    pub angle: Angle,
 }
 
-impl AngleState {
-    pub fn new() -> AngleState {
-        AngleState {
-            raw_angle: None,
+impl Ma702State {
+    pub fn new() -> Ma702State {
+        Ma702State {
+            raw_angle: 0,
             angle: Angle::Radians(0.),
-            velocity: Angle::Radians(0.),
-            acceleration: Angle::Radians(0.),
-            turns: 0,
-            angle_multiturn: Angle::Radians(0.),
         }
     }
 }
@@ -54,11 +44,11 @@ pub struct Init {}
 pub struct Ready {}
 
 pub struct StreamingPolling {
-    state: AngleState,
+    state: Ma702State,
 }
 
 pub struct StreamingInterrupt {
-    state: StateReader<AngleState>,
+    state: StateReader<Ma702State>,
 }
 
 pub fn new(spi: device::SPI1, tim3: device::TIM3) -> Ma702<Init> {
@@ -273,7 +263,7 @@ impl Ma702<Ready> {
             spi: self.spi,
             tim3: self.tim3,
             mode_state: StreamingPolling {
-                state: AngleState::new(),
+                state: Ma702State::new(),
             },
         }
     }
@@ -286,7 +276,7 @@ impl Ma702<Ready> {
         self.start_stream(&dma, dmamux);
 
         let mut angle_state = MA702_STATE.lock();
-        *angle_state = Some(BufferedState::new(AngleState::new()));
+        *angle_state = Some(BufferedState::new(Ma702State::new()));
 
         // Enable the DMA1[CH2] Transfer Complete interrupt so that the handler is called when the
         // transfer from SPI to memory is complete.
@@ -316,74 +306,33 @@ impl Ma702<Ready> {
 }
 
 impl Ma702<StreamingInterrupt> {
-    pub fn state(&self) -> &AngleState {
+    pub fn state(&self) -> &Ma702State {
         self.mode_state.state.read()
     }
 }
 
 impl Ma702<StreamingPolling> {
-    pub fn update(&mut self, delta_t: f32) -> AngleState {
-        let new_state = calculate_new_angle_state(&self.mode_state.state, delta_t);
+    pub fn update(&mut self, _delta_t: f32) -> Ma702State {
+        let new_state = read_angle();
         self.mode_state.state = new_state;
         new_state
     }
 }
 
-pub static MA702_STATE: SpinLock<Option<BufferedState<AngleState>>> = SpinLock::new(None);
-pub static MA702_INTERRUPT_DATA: SpinLock<Option<(device::DMA1, StateWriter<AngleState>)>> =
+pub static MA702_STATE: SpinLock<Option<BufferedState<Ma702State>>> = SpinLock::new(None);
+pub static MA702_INTERRUPT_DATA: SpinLock<Option<(device::DMA1, StateWriter<Ma702State>)>> =
     SpinLock::new(None);
 
 // Read the global angle value being streamed to by the DMA and return both the raw angle and the
 // angle calculated in radians.
-fn read_angle() -> (u16, Angle) {
+fn read_angle() -> Ma702State {
     // Safety: accessing global mutable values is inherently unsafe. Technically ANGLE doesn't need
     // to be mutable since no user code is mutating it, but it _is_ modified by the DMA controller,
     // so better safe than sorry. That said, read access to it should be atomic and take only a
     // single instruction.
     let raw_angle = unsafe { ANGLE >> 4 };
     let angle = Angle::Radians(raw_angle as f32 / 4096.) * TWO_PI;
-    (raw_angle, angle)
-}
-
-// TODO(blakely): Handle non-ero offsets and correct for negative angle values (keep between 0 and
-// 2pi)
-fn calculate_new_angle_state(old_state: &AngleState, delta_t: f32) -> AngleState {
-    let (raw_angle, angle) = read_angle();
-    // Special case when it's the very first reading to protect against first-sample velocity.
-    let (last_angle, last_velocity) = match old_state.raw_angle {
-        None => (angle, Angle::Radians(0.)),
-        Some(_) => {
-            let other = old_state;
-            (other.angle, other.velocity)
-        }
-    };
-
-    let mut turns = old_state.turns;
-    let d_angle = match angle - last_angle {
-        d_angle if d_angle.in_radians() > PI => {
-            // Rolled over backwards.
-            turns -= 1;
-            Angle::Radians(d_angle.in_radians() - TWO_PI)
-        }
-        d_angle if d_angle.in_radians() < -PI => {
-            // Rolled over forwards.
-            turns += 1;
-            Angle::Radians(d_angle.in_radians() + TWO_PI)
-        }
-        d_angle => d_angle,
-    };
-
-    let velocity = d_angle * delta_t;
-    let acceleration = (velocity - last_velocity) * delta_t;
-
-    AngleState {
-        raw_angle: Some(raw_angle),
-        angle,
-        velocity,
-        acceleration,
-        turns,
-        angle_multiturn: Angle::Radians(turns as f32 * TWO_PI) + angle,
-    }
+    Ma702State { raw_angle, angle }
 }
 
 // This is the interrupt that fires when the transfer from the `SPI[DR]` register transaction is
@@ -395,10 +344,7 @@ fn DMA1_CH2() {
 
     let (dma, ref mut state) = &mut *acquire_hw(&MA702_INTERRUPT_DATA);
     let mut state = state.update();
-    // Get a reference to the state that's not being read.
-    let last_state = state.other();
-    const DELTA_T: f32 = 1. / FREQ_HZ;
-    *state = calculate_new_angle_state(&last_state, DELTA_T);
+    *state = read_angle();
     // Clear DMA IRQ flag.
     dma.ifcr.write(|w| w.gif2().set_bit());
 }

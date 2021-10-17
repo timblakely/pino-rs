@@ -73,8 +73,12 @@ impl<'a> ControlLoop for CalibrateEZero<'a> {
                 ref mut cordic,
                 ..
             } = hardware;
+            let encoder_state = match encoder.state() {
+                None => return CommutationLoop::Running,
+                Some(state) => state,
+            };
             // Calculate the required PWM values via field oriented control.
-            let phase_voltages = self.foc.update(current_sensor, encoder, cordic, DT);
+            let phase_voltages = self.foc.update(current_sensor, encoder_state, cordic, DT);
             hardware
                 .pwm
                 .set_voltages(sensor_state.v_bus, phase_voltages);

@@ -1,7 +1,7 @@
 use crate::{
     cordic::Cordic,
     current_sensing::{CurrentSensor, PhaseCurrents, Ready},
-    encoder::Encoder,
+    encoder::EncoderState,
     pi_controller::PIController,
     pwm::PhaseVoltages,
 };
@@ -112,12 +112,12 @@ impl FieldOrientedControlImpl {
     pub fn update(
         &mut self,
         current_sensor: &CurrentSensor<Ready>,
-        encoder: &Encoder,
+        encoder_state: &EncoderState,
         cordic: &mut Cordic,
         dt: f32,
     ) -> PhaseVoltages {
         // Kick off CORDIC conversion
-        let pending_cos_sin = cordic.cos_sin(encoder.electrical_angle());
+        let pending_cos_sin = cordic.cos_sin(encoder_state.electrical_angle);
         // Sample ADCs in the meantime
         let phase_currents = current_sensor.sample();
         // Actually get the results of the Cos/Sin transform.
@@ -128,7 +128,7 @@ impl FieldOrientedControlImpl {
         // Kick off new CORDIC conversion for future electrical theta
         // TODO(blakely): Why does Ben use 1.5x here?
         let new_electrical_theta =
-            encoder.electrical_angle() + 1.5f32 * dt * encoder.electrical_velocity();
+            encoder_state.electrical_angle + 1.5f32 * dt * encoder_state.electrical_velocity;
         let pending_cos_sin = cordic.cos_sin(new_electrical_theta);
         // In the meantime, update the controllers for d and q axes
         let new_q_voltage = self

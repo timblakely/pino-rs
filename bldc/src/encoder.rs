@@ -1,91 +1,20 @@
-use crate::ic::ma702::{AngleState, Ma702, StreamingPolling};
+use crate::ic::ma702::{Ma702, StreamingPolling};
 use core::f32::consts::PI;
-use num_traits::float::FloatCore;
-use third_party::ang::Angle;
+use third_party::ang::{AbsoluteDist, Angle};
 
 const TWO_PI: f32 = PI * 2.;
-
-#[derive(Clone, Copy)]
-pub struct EncoderState {
-    electrical_angle: Angle,
-    electrical_velocity: Angle,
-}
-
-impl EncoderState {
-    pub fn new(electrical_angle: Angle, electrical_velocity: Angle) -> EncoderState {
-        EncoderState {
-            electrical_angle,
-            electrical_velocity,
-        }
-    }
-}
-
-struct PllObserverCounts {
-    kp: f32,
-    ki: f32,
-    // Note: These are represented as floats, but are actually fractional representations of the
-    // encoder readings.
-    angle: f32,
-    velocity: f32,
-}
-
-impl PllObserverCounts {
-    pub fn with_bandwidth(bandwidth: f32) -> Self {
-        // This is based on a critically-damped pos/vel observer where the poles are on top of each
-        // other. The `A` matrix is effectively $\begin{vmatrix}-k_p & 1 \\ -k_i & 0 \end{vmatrix}$,
-        // which after running through SymPy for the eigenvalues (`Matrix([[-x, 1], [-y,
-        // 0]]).eigenvals()`) gives us $kp = -2 * bandwidth$ and $ki = \frac{k_p^2}{4}$
-        // For more info, see [this thread on ODrive's
-        // forum](https://discourse.odriverobotics.com/t/rotor-encoder-pll-and-velocity/224/4)
-        let kp = 2.0 * bandwidth;
-        let ki = 0.25 * (kp * kp);
-        // TODO(blakely): Don't panic here; return a `Result`.
-        if kp < 1. {
-            panic!(
-                "Observer bandwidth needs to be >= 0.5 due to discretization limitations. At {} \
-                 rads/s kp={}",
-                bandwidth, kp
-            );
-        }
-        PllObserverCounts::with_gains(kp, ki)
-    }
-
-    // Allow instantiating with gains directly
-    pub fn with_gains(kp: f32, ki: f32) -> Self {
-        // TODO(blakely): Don't panic here; return a `Result`.
-        if kp < 1. {
-            panic!("Due to discretization kp must be >= 1.0. Got {}", kp);
-        }
-        PllObserverCounts {
-            kp,
-            ki,
-            angle: 0.,
-            velocity: 0.,
-        }
-    }
-
-    pub fn update(&mut self, dt: f32, observed_encoder_reading: u16) -> (f32, f32) {
-        // Predict the current position.
-        self.angle += dt * self.velocity;
-        // Discrete phase detector. We need to discretize the continuous (float) prediction above,
-        // so we need to figure out if the prediction is ahead or behind of where the actual
-        // observed angle is. If our predicted angle is a bit behind and discretization hasn't
-        // stepped up to the new value yet, but the encoder _has_, the following will be 1.0f.
-        let error = (observed_encoder_reading as i32 - (self.angle.floor()) as i32) as f32;
-        // Update the predicted angle based on the damping effect of kp, and update the velocity
-        // measurement (stiffness?).
-        self.angle += dt * self.kp * error;
-        self.velocity += dt * self.ki * error;
-
-        (self.angle, self.velocity)
-    }
-}
 
 struct PllObserverRadians {
     kp: f32,
     ki: f32,
     min_d_theta: Angle,
     angle: Option<Angle>,
+    velocity: Angle,
+    d_theta: Angle,
+}
+
+struct PllObserverState {
+    angle: Angle,
     velocity: Angle,
 }
 
@@ -122,16 +51,20 @@ impl PllObserverRadians {
             angle: None,
             velocity: Angle::Radians(0.),
             min_d_theta,
+            d_theta: Angle::Radians(0.),
         }
     }
 
-    pub fn update(&mut self, dt: f32, new_reading: Angle) -> (f32, f32) {
+    pub fn update(&mut self, dt: f32, new_reading: Angle) -> PllObserverState {
         let previous_angle = match self.angle {
             Some(x) => x,
             None => {
                 self.angle = Some(new_reading);
                 self.velocity = Angle::Radians(0.);
-                return (new_reading.in_radians(), 0.);
+                return PllObserverState {
+                    angle: new_reading,
+                    velocity: self.velocity,
+                };
             }
         };
         let previous_velocity = self.velocity;
@@ -140,11 +73,12 @@ impl PllObserverRadians {
         let angle = previous_angle + dt * previous_velocity;
 
         // Calculate change in theta.
-        let d_theta = match new_reading - angle {
-            d_angle if d_angle.in_radians() > PI => Angle::Radians(d_angle.in_radians() - TWO_PI),
-            d_angle if d_angle.in_radians() <= -PI => Angle::Radians(d_angle.in_radians() + TWO_PI),
-            d_angle => d_angle,
-        };
+        // let d_theta = match new_reading - angle {
+        //     d_angle if d_angle.in_radians() > PI => Angle::Radians(d_angle.in_radians() - TWO_PI),
+        //     d_angle if d_angle.in_radians() <= -PI => Angle::Radians(d_angle.in_radians() + TWO_PI),
+        //     d_angle => d_angle,
+        // };
+        let d_theta = new_reading.abs_dist(angle);
 
         // Discrete phase detector. We need to discretize the continuous (float) prediction above,
         // so we need to figure out if the prediction is ahead or behind of where the actual
@@ -160,19 +94,30 @@ impl PllObserverRadians {
         let new_angle = (angle + Angle::Radians(dt * self.kp * error)).normalized();
         self.angle = Some(new_angle);
         self.velocity = previous_velocity + Angle::Radians(dt * self.ki * error);
+        self.d_theta = d_theta;
 
-        (new_angle.in_radians(), self.velocity.in_radians())
+        PllObserverState {
+            angle: new_angle,
+            velocity: self.velocity,
+        }
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct EncoderState {
+    pub raw_encoder: u16,
+    pub angle: Angle,
+    pub velocity: Angle,
+    pub angle_multiturn: Angle,
+    pub electrical_angle: Angle,
+    pub electrical_velocity: Angle,
 }
 
 pub struct Encoder {
     ma702: Ma702<StreamingPolling>,
     pole_pairs: u8,
-    angle_state: AngleState,
-    state: EncoderState,
-    // encoder_observer: PllObserverCounts,
     encoder_observer: PllObserverRadians,
-    observer_state: (f32, f32),
+    state: Option<EncoderState>,
 }
 
 impl Encoder {
@@ -184,50 +129,38 @@ impl Encoder {
         Encoder {
             ma702,
             pole_pairs,
-            angle_state: AngleState::new(),
-            state: EncoderState::new(Angle::Radians(0.), Angle::Radians(0.)),
             encoder_observer: PllObserverRadians::with_bandwidth(
                 velocity_observer_bandwidth,
                 Angle::Radians(TWO_PI / 4096.),
             ),
-            observer_state: (0., 0.),
+            state: None,
         }
     }
 
-    pub fn update(&mut self, delta_t: f32) {
+    pub fn update(&mut self, delta_t: f32) -> EncoderState {
         let angle_state = self.ma702.update(delta_t);
-        self.angle_state = angle_state;
-        // if let Some(raw_encoder_reading) = angle_state.raw_angle {
-        //     let from_pll = self.encoder_observer.update(delta_t, raw_encoder_reading);
-        //     self.observer_state = (from_pll.0 / 4096., from_pll.1 / 4096.);
-        // }
-
-        self.observer_state = self.encoder_observer.update(delta_t, angle_state.angle);
-
-        // TODO(blakely): This may be less accurate than using the conversion from raw_angle.
+        let pll_state = self.encoder_observer.update(delta_t, angle_state.angle);
         let electrical_angle = (angle_state.angle * self.pole_pairs as f32).normalized();
-        let electrical_velocity = (angle_state.velocity * self.pole_pairs as f32).normalized();
+        let electrical_velocity = pll_state.velocity * self.pole_pairs as f32;
 
-        self.state = EncoderState::new(electrical_angle, electrical_velocity);
+        let mut new_state = EncoderState {
+            raw_encoder: angle_state.raw_angle,
+            angle: pll_state.angle,
+            velocity: pll_state.velocity,
+            angle_multiturn: pll_state.angle,
+            electrical_angle,
+            electrical_velocity,
+        };
+
+        if let Some(previous_state) = self.state {
+            let d_theta = pll_state.angle.abs_dist(previous_state.angle);
+            new_state.angle_multiturn = previous_state.angle_multiturn + d_theta;
+        }
+        self.state = Some(new_state);
+        new_state
     }
 
-    pub fn observer_state(&self) -> (f32, f32) {
-        self.observer_state
-    }
-
-    pub fn electrical_angle(&self) -> Angle {
-        self.state.electrical_angle
-    }
-
-    pub fn electrical_velocity(&self) -> Angle {
-        self.state.electrical_velocity
-    }
-
-    pub fn state(&self) -> &EncoderState {
+    pub fn state(&self) -> &Option<EncoderState> {
         &self.state
-    }
-
-    pub fn angle_state(&self) -> &AngleState {
-        &self.angle_state
     }
 }

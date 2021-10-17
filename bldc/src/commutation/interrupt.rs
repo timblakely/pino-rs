@@ -42,7 +42,7 @@ fn commutate() {
         // Next, grab the encoder angle and update velocity and acceleration.
 
         // TODO(blakely): pull the frequency from the commutation state.
-        encoder.update(1. / 40000.);
+        let encoder_state = encoder.update(1. / 40000.);
 
         // Sample ADCs in the meantime
         let phase_currents = current_sensor.sample();
@@ -51,13 +51,7 @@ fn commutate() {
         let v_bus = current_sensor.v_bus();
 
         // Update the state
-        *SENSOR_STATE.lock_write() = Some(SensorState::new(
-            encoder.angle_state(),
-            encoder.state(),
-            &phase_currents,
-            encoder.observer_state(),
-            v_bus,
-        ));
+        *SENSOR_STATE.lock_write() = Some(SensorState::new(&encoder_state, &phase_currents, v_bus));
     }
 
     // If there's a control callback, call it. Otherwise just idle.

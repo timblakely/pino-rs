@@ -6,7 +6,6 @@ use crate::{
     cordic::Cordic,
     current_sensing::{self, CurrentSensor, PhaseCurrents},
     encoder::{Encoder, EncoderState},
-    ic::ma702::AngleState,
     pwm::PwmOutput,
     util::{interrupts::block_interrupt, seq_lock::SeqLock},
 };
@@ -43,26 +42,16 @@ pub struct ControlHardware {
 // TODO(blakely): don't require these to be Copy/Clone; use references instead.
 #[derive(Clone, Copy)]
 pub struct SensorState {
-    pub angle_state: AngleState,
     pub encoder_state: EncoderState,
     pub currents: PhaseCurrents,
-    pub observer_state: (f32, f32),
     pub v_bus: f32,
 }
 
 impl SensorState {
-    pub fn new(
-        angle_state: &AngleState,
-        encoder_state: &EncoderState,
-        currents: &PhaseCurrents,
-        observer_state: (f32, f32),
-        v_bus: f32,
-    ) -> SensorState {
+    pub fn new(encoder_state: &EncoderState, currents: &PhaseCurrents, v_bus: f32) -> SensorState {
         SensorState {
-            angle_state: *angle_state,
             encoder_state: *encoder_state,
             currents: *currents,
-            observer_state,
             v_bus,
         }
     }
@@ -147,11 +136,14 @@ impl OutgoingFdcanFrame for SensorState {
         FdcanMessage::new(
             Message::SensorState,
             &[
-                self.angle_state.angle.in_radians().to_bits(),
-                self.angle_state.angle_multiturn.in_radians().to_bits(),
-                self.angle_state.velocity.in_radians().to_bits(),
-                self.observer_state.0.to_bits(),
-                self.observer_state.1.to_bits(),
+                self.encoder_state.angle.in_radians().to_bits(),
+                self.encoder_state.angle_multiturn.in_radians().to_bits(),
+                self.encoder_state.velocity.in_radians().to_bits(),
+                self.encoder_state.electrical_angle.in_radians().to_bits(),
+                self.encoder_state
+                    .electrical_velocity
+                    .in_radians()
+                    .to_bits(),
             ],
         )
     }
