@@ -35,3 +35,14 @@ TI's [CSD88599Q5DC](https://www.ti.com/product/CSD88599Q5DC) are two 60V FETs in
 ## Ceramics
 
 TDK's C3216X7R1H106K160AE has soft termination and not awful derating
+
+## Isolators
+
+TI's [ISO776x](https://www.ti.com/lit/ds/symlink/iso7761.pdf?ts=1636337587281&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FISO7761)
+- ![](images/2021-11-07-18-14-22.png)
+
+# Power
+
+muRata “PicoBK™” MYRGP-W／MYRGP-B series
+1.0A Inductor Built-in Step-Down DC/DC Converters
+- Includes the inductor(!!!)
