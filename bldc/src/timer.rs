@@ -1,6 +1,3 @@
-extern crate alloc;
-
-use alloc::boxed::Box;
 #[cfg(not(feature = "host"))]
 use num_traits::float::FloatCore;
 use stm32g4::stm32g474::{self as device, interrupt};
@@ -103,7 +100,7 @@ pub fn iteratively_calculate_timer_config(
 
 struct Scheduler {
     pub tim2: device::TIM2,
-    pub callback: Option<Box<dyn FnMut()>>,
+    pub callback: Option<fn()>,
 }
 unsafe impl Send for Scheduler {}
 
@@ -126,12 +123,9 @@ pub fn donate_hardware_for_scheduler(tim2: device::TIM2) {
     });
 }
 
-pub fn periodic_callback(frequency: f32, tolerance: f32, callback: impl FnMut()) {
+pub fn periodic_callback(frequency: f32, tolerance: f32, callback: fn()) {
     block_interrupt(device::Interrupt::TIM2, &SCHEDULER, |mut scheduler| {
-        let boxed: Box<dyn FnMut()> = Box::new(callback);
-        // Safety: in order to store something in a global static, it _must_ have a 'static lifetime,
-        // even if it's stored on the heap (???). So this transmutes it to a static lifetime.
-        scheduler.callback = unsafe { core::mem::transmute(Some(boxed)) };
+        scheduler.callback = Some(callback);
 
         // Configure the timer now.
         let timer_config = iteratively_calculate_timer_config(170_000_000, frequency, tolerance)
