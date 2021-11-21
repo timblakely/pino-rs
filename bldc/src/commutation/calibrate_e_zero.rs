@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::comms::messages::Message;
 use crate::{
@@ -8,7 +6,6 @@ use crate::{
     led::Led,
     pi_controller::PIController,
 };
-use alloc::boxed::Box;
 
 // Field-oriented control. Very basic Park/Clark forward and inverse. Currently no SVM is performed,
 // and only a single i_q/i_d value is accepted S
@@ -18,7 +15,7 @@ const DT: f32 = 1. / 40_000.;
 const _MIN_PWM_VALUE: f32 = 0.;
 const _MAX_PWM_VALUE: f32 = 2125.;
 
-pub struct CalibrateEZero<'a> {
+pub struct CalibrateEZero {
     foc: FieldOrientedControlImpl,
 
     total_counts: u32,
@@ -26,15 +23,15 @@ pub struct CalibrateEZero<'a> {
 
     record: EZeroMsg,
 
-    callback: Box<dyn for<'r> FnMut(&'r EZeroMsg) + 'a + Send>,
+    callback: for<'r> fn(&'r EZeroMsg),
 }
 
-impl<'a> CalibrateEZero<'a> {
+impl CalibrateEZero {
     pub fn new(
         duration: f32,
         currents: DQCurrents,
-        callback: impl for<'r> FnMut(&'r EZeroMsg) + 'a + Send,
-    ) -> CalibrateEZero<'a> {
+        callback: for<'r> fn(&'r EZeroMsg),
+    ) -> CalibrateEZero {
         let q_controller = PIController::new(1.421142407046769, 0.055681818, 24.);
         let d_controller = PIController::new(1.421142407046769, 0.055681818, 24.);
 
@@ -48,7 +45,7 @@ impl<'a> CalibrateEZero<'a> {
             foc,
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
-            callback: Box::new(callback),
+            callback,
 
             record: EZeroMsg {
                 angle: 0.,
@@ -60,7 +57,7 @@ impl<'a> CalibrateEZero<'a> {
     }
 }
 
-impl<'a> ControlLoop for CalibrateEZero<'a> {
+impl ControlLoop for CalibrateEZero {
     fn commutate(
         &mut self,
         sensor_state: &SensorState,
