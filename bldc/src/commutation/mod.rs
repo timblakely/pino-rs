@@ -9,8 +9,6 @@ use crate::{
 use core::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 use stm32g4::stm32g474 as device;
-extern crate alloc;
-use alloc::boxed::Box;
 
 pub mod calibrate_adc;
 pub mod calibrate_e_zero;
@@ -28,6 +26,8 @@ pub mod torque_control;
 pub use idle_current_distribution::*;
 pub use idle_current_sensor::*;
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
+
+use self::calibrate_adc::CalibrateADC;
 
 pub struct ControlHardware {
     pub current_sensor: CurrentSensor<current_sensing::Ready>,
@@ -56,7 +56,7 @@ impl SensorState {
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct CommutationState {
-    pub control_loop: Option<Box<dyn ControlLoop>>,
+    pub commutator: Commutator,
     pub hw: ControlHardware,
 }
 
@@ -67,21 +67,28 @@ lazy_static! {
 
 pub static COMMUTATING: AtomicBool = AtomicBool::new(false);
 
-pub struct Commutator {}
+pub enum Commutator {
+    // TODO(blakely): remove this
+    CalibrateADC(calibrate_adc::CalibrateADC<'static>),
+    TorqueControl(torque_control::TorqueControl),
+    PosVelControl(pos_vel_control::PosVelControl),
+
+    Idle,
+}
 
 impl Commutator {
     pub fn donate_hardware(hw: ControlHardware) {
         *COMMUTATION_STATE
             .try_lock()
             .expect("Lock held while trying to donate hardware") = Some(CommutationState {
-            control_loop: None,
+            commutator: Commutator::Idle,
             hw,
         });
     }
 
-    pub fn set(commutator: impl ControlLoop + 'static) {
+    pub fn set(commutator: Self) {
         block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
-            vars.control_loop = Some(Box::new(commutator));
+            vars.commutator = commutator;
         });
     }
 

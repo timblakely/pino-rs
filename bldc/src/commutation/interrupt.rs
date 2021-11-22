@@ -4,7 +4,8 @@ use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use crate::led::{self, Led};
 
 use super::{
-    CommutationLoop, ControlHardware, SensorState, COMMUTATING, COMMUTATION_STATE, SENSOR_STATE,
+    CommutationLoop, Commutator, ControlHardware, ControlLoop, SensorState, COMMUTATING,
+    COMMUTATION_STATE, SENSOR_STATE,
 };
 
 // Interrupt handler triggered by TIM1[CH4]'s tim_trgo2. Under normal circumstances this function
@@ -55,9 +56,11 @@ fn commutate() {
     }
 
     // If there's a control callback, call it. Otherwise just idle.
-    let commutator = match loop_vars.control_loop {
-        Some(ref mut x) => x,
-        _ => return,
+    let commutator: &mut dyn ControlLoop = match loop_vars.commutator {
+        Commutator::Idle => return,
+        Commutator::TorqueControl(ref mut x) => x,
+        Commutator::CalibrateADC(ref mut x) => x,
+        Commutator::PosVelControl(ref mut x) => x,
     };
 
     COMMUTATING.store(true, core::sync::atomic::Ordering::Relaxed);
@@ -78,7 +81,7 @@ fn commutate() {
             pwm.reset_current_sample();
             pwm.reset_deadtime();
             commutator.finished();
-            loop_vars.control_loop = None;
+            loop_vars.commutator = Commutator::Idle;
         }
         _ => return,
     }
