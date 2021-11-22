@@ -4,8 +4,6 @@ use crate::commutation::calibrate_adc::CalibrateADC;
 use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
 use crate::encoder::Encoder;
-#[cfg(not(feature = "host"))]
-use crate::memory::initialize_heap;
 use crate::pwm::PwmOutput;
 use crate::timer::TimerConfig;
 use crate::util::stm32::{
@@ -13,7 +11,6 @@ use crate::util::stm32::{
 };
 use crate::{current_sensing, timer};
 use crate::{ic::drv8323rs, ic::ma702};
-extern crate alloc;
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
 use stm32g4::stm32g474 as device;
@@ -61,11 +58,6 @@ pub struct Ready {
 }
 
 pub fn take_hardware() -> Driver<Init> {
-    // First, initialize the heap so that we can set the control loop callback dynamically. We do
-    // this as early as possible
-    #[cfg(not(feature = "host"))]
-    initialize_heap();
-
     let cp = cm::Peripherals::take().unwrap();
     let p = device::Peripherals::take().unwrap();
 

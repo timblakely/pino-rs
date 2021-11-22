@@ -27,10 +27,6 @@ vcell = "0.1.0"
 default = ["panic-itm"]
 host = []
 
-
-[dependencies.alloc-cortex-m]
-path = "../../alloc-cortex-m"
-
 [dependencies.stm32g4]
 default-features = false
 features = ["stm32g474", "rt"]

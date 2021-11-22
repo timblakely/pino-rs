@@ -1,4 +1,3 @@
-extern crate alloc;
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 
 use crate::{
