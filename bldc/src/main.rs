@@ -30,10 +30,10 @@ fn main() -> ! {
                 e_raw: 1337.,
             });
         }
-        Message::TorqueControl(cmd) => Commutator::set(Commutator::TorqueControl(
-            TorqueControl::new(cmd.duration, cmd.currents),
-        )),
-        Message::PosVelControl => Commutator::set(Commutator::PosVelControl(PosVelControl::new())),
+        Message::TorqueControl(cmd) => {
+            Commutator::set(TorqueControl::new(cmd.duration, cmd.currents).into())
+        }
+        Message::PosVelControl => Commutator::set(PosVelControl::new().into()),
         Message::PosVelCommand(cmd) => {
             PosVelControl::command(cmd);
         }

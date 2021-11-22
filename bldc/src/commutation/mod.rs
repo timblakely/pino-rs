@@ -7,6 +7,7 @@ use crate::{
     util::{interrupts::block_interrupt, seq_lock::SeqLock},
 };
 use core::sync::atomic::{AtomicBool, Ordering};
+use enum_dispatch::enum_dispatch;
 use lazy_static::lazy_static;
 use stm32g4::stm32g474 as device;
 
@@ -26,8 +27,6 @@ pub mod torque_control;
 pub use idle_current_distribution::*;
 pub use idle_current_sensor::*;
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
-
-use self::calibrate_adc::CalibrateADC;
 
 pub struct ControlHardware {
     pub current_sensor: CurrentSensor<current_sensing::Ready>,
@@ -56,7 +55,7 @@ impl SensorState {
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct CommutationState {
-    pub commutator: Commutator,
+    pub commutator: Option<Commutator>,
     pub hw: ControlHardware,
 }
 
@@ -67,13 +66,15 @@ lazy_static! {
 
 pub static COMMUTATING: AtomicBool = AtomicBool::new(false);
 
-pub enum Commutator {
-    // TODO(blakely): remove this
-    CalibrateADC(calibrate_adc::CalibrateADC<'static>),
-    TorqueControl(torque_control::TorqueControl),
-    PosVelControl(pos_vel_control::PosVelControl),
+use calibrate_adc::CalibrateADC;
+use pos_vel_control::PosVelControl;
+use torque_control::TorqueControl;
 
-    Idle,
+#[enum_dispatch(ControlLoop)]
+pub enum Commutator {
+    CalibrateADC,
+    TorqueControl,
+    PosVelControl,
 }
 
 impl Commutator {
@@ -81,14 +82,14 @@ impl Commutator {
         *COMMUTATION_STATE
             .try_lock()
             .expect("Lock held while trying to donate hardware") = Some(CommutationState {
-            commutator: Commutator::Idle,
+            commutator: None,
             hw,
         });
     }
 
-    pub fn set(commutator: Self) {
+    pub fn set(commutator: Commutator) {
         block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
-            vars.commutator = commutator;
+            vars.commutator = Some(commutator);
         });
     }
 
@@ -126,6 +127,7 @@ pub enum CommutationLoop {
 }
 
 // Trait that any control loops need to implement.
+#[enum_dispatch]
 pub trait ControlLoop: Send {
     fn commutate(
         &mut self,

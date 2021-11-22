@@ -1,6 +1,3 @@
-extern crate alloc;
-use alloc::boxed::Box;
-
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame},
     current_sensing::PhaseCurrents,
@@ -13,28 +10,25 @@ pub struct CalibrateADCCmd {
     pub duration: f32,
 }
 
-pub struct CalibrateADC<'a> {
+pub struct CalibrateADC {
     total_counts: u32,
     loop_count: u32,
     sample: PhaseCurrents,
-    callback: Box<dyn for<'r> FnMut(&'r PhaseCurrents) + 'a + Send>,
+    callback: for<'r> fn(&'r PhaseCurrents),
 }
 
-impl<'a> CalibrateADC<'a> {
-    pub fn new(
-        duration: f32,
-        callback: impl for<'r> FnMut(&'r PhaseCurrents) + 'a + Send,
-    ) -> CalibrateADC<'a> {
+impl CalibrateADC {
+    pub fn new(duration: f32, callback: for<'r> fn(&'r PhaseCurrents)) -> CalibrateADC {
         CalibrateADC {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             sample: PhaseCurrents::new(),
-            callback: Box::new(callback),
+            callback,
         }
     }
 }
 
-impl<'a> ControlLoop for CalibrateADC<'a> {
+impl ControlLoop for CalibrateADC {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,

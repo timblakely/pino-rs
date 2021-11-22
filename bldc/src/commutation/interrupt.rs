@@ -56,11 +56,9 @@ fn commutate() {
     }
 
     // If there's a control callback, call it. Otherwise just idle.
-    let commutator: &mut dyn ControlLoop = match loop_vars.commutator {
-        Commutator::Idle => return,
-        Commutator::TorqueControl(ref mut x) => x,
-        Commutator::CalibrateADC(ref mut x) => x,
-        Commutator::PosVelControl(ref mut x) => x,
+    let commutator: &mut Commutator = match loop_vars.commutator {
+        None => return,
+        Some(ref mut x) => x,
     };
 
     COMMUTATING.store(true, core::sync::atomic::Ordering::Relaxed);
@@ -81,7 +79,7 @@ fn commutate() {
             pwm.reset_current_sample();
             pwm.reset_deadtime();
             commutator.finished();
-            loop_vars.commutator = Commutator::Idle;
+            loop_vars.commutator = None;
         }
         _ => return,
     }
