@@ -1,6 +1,5 @@
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::{
-    comms::fdcan::{FdcanMessage, IncomingFdcanFrame},
     foc::{DQCurrents, FieldOrientedControlImpl},
     led::Led,
     pi_controller::PIController,
@@ -80,22 +79,4 @@ impl ControlLoop for TorqueControl {
     }
 
     fn finished(&mut self) {}
-}
-
-pub struct TorqueControlCmd {
-    pub duration: f32,
-    pub currents: DQCurrents,
-}
-
-impl IncomingFdcanFrame for TorqueControlCmd {
-    fn unpack(message: FdcanMessage) -> Self {
-        let buffer = message.data;
-        TorqueControlCmd {
-            duration: f32::from_bits(buffer[0]),
-            currents: DQCurrents {
-                q: f32::from_bits(buffer[1]),
-                d: f32::from_bits(buffer[2]),
-            },
-        }
-    }
 }

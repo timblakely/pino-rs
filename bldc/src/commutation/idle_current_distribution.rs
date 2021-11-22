@@ -2,7 +2,6 @@ extern crate alloc;
 
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
-use crate::comms::messages::Message;
 use alloc::boxed::Box;
 
 // Sample current one one phase for a period of time, building a histogram of currents.
@@ -108,6 +107,6 @@ impl IncomingFdcanFrame for IdleCurrentDistributionCmd {
 
 impl<'a> OutgoingFdcanFrame for CurrentDistribution<'a> {
     fn pack(&self) -> FdcanMessage {
-        FdcanMessage::new(Message::CurrentDistribution, self.bins)
+        FdcanMessage::new(0x10, self.bins)
     }
 }

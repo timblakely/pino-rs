@@ -1,7 +1,6 @@
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
-use crate::comms::messages::Message;
+use crate::comms::messages::EZeroMsg;
 use crate::{
-    comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     foc::{DQCurrents, FieldOrientedControlImpl},
     led::Led,
     pi_controller::PIController,
@@ -100,44 +99,5 @@ impl ControlLoop for CalibrateEZero {
 
     fn finished(&mut self) {
         (self.callback)(&self.record);
-    }
-}
-
-pub struct CalibrateEZeroCmd {
-    pub duration: f32,
-    pub currents: DQCurrents,
-}
-
-impl IncomingFdcanFrame for CalibrateEZeroCmd {
-    fn unpack(message: FdcanMessage) -> Self {
-        let buffer = message.data;
-        CalibrateEZeroCmd {
-            duration: f32::from_bits(buffer[0]),
-            currents: DQCurrents {
-                q: f32::from_bits(buffer[1]),
-                d: f32::from_bits(buffer[2]),
-            },
-        }
-    }
-}
-
-pub struct EZeroMsg {
-    pub e_angle: f32,
-    pub e_raw: f32,
-    pub angle: f32,
-    pub angle_raw: u32,
-}
-
-impl<'a> OutgoingFdcanFrame for EZeroMsg {
-    fn pack(&self) -> FdcanMessage {
-        FdcanMessage::new(
-            Message::EZero,
-            &[
-                self.angle.to_bits(),
-                self.angle_raw,
-                self.e_angle.to_bits(),
-                self.e_raw.to_bits(),
-            ],
-        )
     }
 }

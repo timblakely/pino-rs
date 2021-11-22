@@ -7,7 +7,6 @@ use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 
-use crate::comms::messages::Message;
 use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
@@ -380,11 +379,11 @@ pub struct FdcanMessage {
 }
 
 impl FdcanMessage {
-    pub fn new<const T: usize>(message: Message, data: &[u32; T]) -> FdcanMessage {
+    pub fn new<const T: usize>(message: u32, data: &[u32; T]) -> FdcanMessage {
         // There's no real idiomatic way to zero-initialize-and-fill-in-up-to-length in Rust as of
         // Aug '21.
         let mut message = FdcanMessage {
-            id: message as u32,
+            id: message,
             data: [0; 16],
             size: T as u8,
         };

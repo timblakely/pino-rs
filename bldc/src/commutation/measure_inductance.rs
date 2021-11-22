@@ -1,7 +1,6 @@
 extern crate alloc;
 
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
-use crate::comms::messages::Message;
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
@@ -191,7 +190,7 @@ impl IncomingFdcanFrame for MeasureInductanceCmd {
 impl<'a> OutgoingFdcanFrame for Inductances<'a> {
     fn pack(&self) -> FdcanMessage {
         FdcanMessage::new(
-            Message::Inductances,
+            0x14,
             &[
                 self.inductances[0].to_bits(),
                 self.inductances[1].to_bits(),

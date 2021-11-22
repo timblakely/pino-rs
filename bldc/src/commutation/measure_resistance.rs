@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
-use crate::comms::messages::Message;
+
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
@@ -148,6 +148,6 @@ impl IncomingFdcanFrame for MeasureResistanceCmd {
 
 impl OutgoingFdcanFrame for Resistance {
     fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
-        FdcanMessage::new(Message::Resistance, &[self.resistance.to_bits()])
+        FdcanMessage::new(0x12, &[self.resistance.to_bits()])
     }
 }

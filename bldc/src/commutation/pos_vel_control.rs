@@ -1,7 +1,7 @@
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 use crate::{
-    comms::fdcan::{FdcanMessage, IncomingFdcanFrame},
+    comms::messages::PosVelCommand,
     foc::FieldOrientedControlImpl,
     pi_controller::PIController,
     util::buffered_state::{BufferedState, StateReader, StateWriter},
@@ -13,35 +13,6 @@ const GEAR_RATIO: f32 = 6.0;
 const DT: f32 = 1. / 40_000.;
 
 // Position and velocity control using FoC wrapped in torque control.
-
-#[derive(Clone, Copy)]
-pub struct PosVelCommand {
-    pub position: f32,
-    pub velocity: f32,
-    pub stiffness_gain: f32,
-    pub damping_gain: f32,
-    pub torque_constant: f32,
-}
-
-impl IncomingFdcanFrame for PosVelCommand {
-    fn unpack(message: FdcanMessage) -> Self {
-        let buffer = message.data;
-        PosVelCommand {
-            position: f32::from_bits(buffer[0]),
-            velocity: f32::from_bits(buffer[1]),
-            stiffness_gain: f32::from_bits(buffer[2]),
-            damping_gain: f32::from_bits(buffer[3]),
-            torque_constant: f32::from_bits(buffer[4]),
-        }
-    }
-}
-
-pub struct PosVelMode {}
-impl IncomingFdcanFrame for PosVelMode {
-    fn unpack(_: FdcanMessage) -> Self {
-        PosVelMode {}
-    }
-}
 
 static COMMAND_BUFFER: SpinLock<Option<BufferedState<PosVelCommand>>> = SpinLock::new(None);
 static COMMAND: SpinLock<Option<StateWriter<PosVelCommand>>> = SpinLock::new(None);
