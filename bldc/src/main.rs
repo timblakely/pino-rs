@@ -1,12 +1,12 @@
 #![cfg_attr(not(test), no_std)]
 #![no_main]
 
-use bldc::comms::messages::Message;
+use bldc::comms::fdcan::FdcanMessage;
 use bldc::{
     comms::fdcan::{self, IncomingFdcanFrame},
     commutation::{
-        calibrate_e_zero::{CalibrateEZeroCmd, EZeroMsg},
-        pos_vel_control::{PosVelCommand, PosVelControl, PosVelMode},
+        calibrate_e_zero::EZeroMsg,
+        pos_vel_control::{PosVelCommand, PosVelControl},
         torque_control::{TorqueControl, TorqueControlCmd},
         Commutator, SENSOR_STATE,
     },
@@ -42,39 +42,37 @@ impl IncomingFdcanFrame for StopStreamCmd {
 fn main() -> ! {
     // Acquire the driver.
     let mut driver = driver::take_hardware().configure_peripherals().calibrate();
-
-    driver.on(Message::CalibrateEZero, |_: CalibrateEZeroCmd| {
-        fdcan::send_message(&EZeroMsg {
-            angle: 123.,
-            angle_raw: 456,
-            e_angle: 789.,
-            e_raw: 1337.,
-        });
-    });
-
-    driver.on(Message::TorqueControl, |cmd: TorqueControlCmd| {
-        Commutator::set(TorqueControl::new(cmd.duration, cmd.currents))
-    });
-
-    driver.on(Message::PosVelControl, |_: PosVelMode| {
-        Commutator::set(PosVelControl::new())
-    });
-
-    driver.on(Message::PosVelCommand, |cmd: PosVelCommand| {
-        PosVelControl::command(cmd);
-    });
-
-    driver.on(Message::BeginStateStream, |cmd: StartStreamCmd| {
-        let frequency = cmd.frequency.max(1.);
-        timer::periodic_callback(frequency, frequency / 10_000., || {
-            if let Some(state) = SENSOR_STATE.read() {
-                fdcan::send_message(&state);
-            };
-        });
-    });
-
-    driver.on(Message::EndStateStream, |_cmd: StopStreamCmd| {
-        timer::stop_periodic_callback();
+    driver.on_message(|message: FdcanMessage| match message.id {
+        0x15 => {
+            fdcan::send_message(&EZeroMsg {
+                angle: 123.,
+                angle_raw: 456,
+                e_angle: 789.,
+                e_raw: 1337.,
+            });
+        }
+        0x17 => {
+            let cmd = TorqueControlCmd::unpack(message);
+            Commutator::set(TorqueControl::new(cmd.duration, cmd.currents))
+        }
+        0x18 => Commutator::set(PosVelControl::new()),
+        0x19 => {
+            let cmd = PosVelCommand::unpack(message);
+            PosVelControl::command(cmd);
+        }
+        0x1A => {
+            let cmd = StartStreamCmd::unpack(message);
+            let frequency = cmd.frequency.max(1.);
+            timer::periodic_callback(frequency, frequency / 10_000., || {
+                if let Some(state) = SENSOR_STATE.read() {
+                    fdcan::send_message(&state);
+                };
+            });
+        }
+        0x1B => {
+            timer::stop_periodic_callback();
+        }
+        _ => (),
     });
 
     driver.listen();

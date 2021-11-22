@@ -1,16 +1,11 @@
 //! FDCAN implementation
-
-extern crate alloc;
-
 use crate::util::interrupts::block_interrupts;
 use crate::{block_until, block_while};
-use alloc::boxed::Box;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
-use heapless::FnvIndexMap;
 
 use crate::comms::messages::Message;
 use ringbuffer::RingBufferRead;
@@ -105,26 +100,9 @@ pub struct Init {
 }
 pub struct Running;
 
-pub struct Callback<'a> {
-    callback: Box<dyn FnMut(FdcanMessage) + 'a + Send>,
-}
-impl<'a> Callback<'a> {
-    pub fn run(&mut self, message: FdcanMessage) {
-        (Self::as_scoped_mut(self).callback)(message)
-    }
-
-    pub fn make_static<'b>(x: Callback<'b>) -> Callback<'static> {
-        unsafe { core::mem::transmute(x) }
-    }
-
-    pub fn as_scoped_mut<'b>(x: &'b mut Callback<'a>) -> &'b mut Callback<'b> {
-        unsafe { core::mem::transmute(x) }
-    }
-}
-
 pub struct Fdcan<S> {
     mode_state: S,
-    handlers: FnvIndexMap<u32, Callback<'static>, 16>,
+    message_handler: Option<fn(FdcanMessage)>,
 }
 
 pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
@@ -140,7 +118,13 @@ pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
             sram: Sram::get(),
             fdcan,
         },
-        handlers: FnvIndexMap::new(),
+        message_handler: None,
+    }
+}
+
+impl<T> Fdcan<T> {
+    pub fn message_handler(&mut self, message_handler: fn(FdcanMessage)) {
+        self.message_handler = Some(message_handler);
     }
 }
 
@@ -301,7 +285,7 @@ impl Fdcan<Init> {
         });
         Fdcan {
             mode_state: Running,
-            handlers: self.handlers,
+            message_handler: self.message_handler,
         }
     }
 }
@@ -337,32 +321,10 @@ impl Fdcan<Running> {
             &FDCAN_RECEIVE_BUF,
             |mut buf| buf.dequeue(),
         ) {
-            if let Some(handler) = self.handlers.get_mut(&message.id) {
-                Callback::as_scoped_mut(handler).run(message);
+            if let Some(handler) = self.message_handler {
+                (handler)(message);
             }
         }
-    }
-}
-
-impl<T> Fdcan<T> {
-    pub fn on<'a, M: IncomingFdcanFrame>(
-        &mut self,
-        message_id: u32,
-        mut callback: impl FnMut(M) + 'a + Send,
-    ) {
-        // There's a bit of subtlety here. The FDCAN peripheral is stored in a global static, safely
-        // behind a lock. However because of that, anything stored _inside_ that lock also gets a
-        // `'static` lifetime. There's just no way around that; it's baked into borrowck. So we have
-        // to _\*shudder\*_ use `core::mem::transmute` to magic-away the finite lifetime of the
-        // callback. That appears to be okay though, since the callback is then stored in a
-        self.handlers
-            .insert(
-                message_id,
-                Callback::make_static(Callback {
-                    callback: Box::new(|message| callback(M::unpack(message))),
-                }),
-            )
-            .unwrap_or_else(|_| panic!("Ran out of callback space"));
     }
 }
 

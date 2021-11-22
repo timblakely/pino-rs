@@ -1,7 +1,5 @@
-use crate::comms::messages::Message;
-
-use crate::comms::fdcan::{self};
-use crate::comms::fdcan::{Fdcan, IncomingFdcanFrame, Running};
+use crate::comms::fdcan::{self, FdcanMessage};
+use crate::comms::fdcan::{Fdcan, Running};
 use crate::commutation::calibrate_adc::CalibrateADC;
 use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
@@ -578,10 +576,10 @@ impl Driver<Ready> {
         }
     }
 
-    pub fn on<'a, M>(&mut self, message: Message, callback: impl FnMut(M) + 'a + Send)
-    where
-        M: IncomingFdcanFrame,
-    {
-        self.mode_state.hardware.fdcan.on(message as u32, callback);
+    pub fn on_message(&mut self, message_handler: fn(FdcanMessage)) {
+        self.mode_state
+            .hardware
+            .fdcan
+            .message_handler(message_handler);
     }
 }
