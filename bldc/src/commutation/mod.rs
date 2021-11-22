@@ -4,15 +4,14 @@ use crate::{
     current_sensing::{self, CurrentSensor, PhaseCurrents},
     encoder::{Encoder, EncoderState},
     pwm::PwmOutput,
-    util::{interrupts::block_interrupt, seq_lock::SeqLock},
+    util::seq_lock::SeqLock,
 };
-use core::sync::atomic::{AtomicBool, Ordering};
-use enum_dispatch::enum_dispatch;
+use core::sync::atomic::AtomicBool;
 use lazy_static::lazy_static;
-use stm32g4::stm32g474 as device;
 
 pub mod calibrate_adc;
 pub mod calibrate_e_zero;
+pub mod commutator;
 pub mod idle_current_distribution;
 pub mod idle_current_sensor;
 pub mod interrupt;
@@ -22,6 +21,8 @@ pub mod phase_current;
 pub mod pos_vel_control;
 pub mod read_encoder;
 pub mod torque_control;
+
+pub use commutator::{CommutationLoop, Commutator, ControlLoop};
 
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;
@@ -55,7 +56,7 @@ impl SensorState {
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct CommutationState {
-    pub commutator: Option<Commutator>,
+    pub commutator: Option<commutator::Commutator>,
     pub hw: ControlHardware,
 }
 
@@ -65,77 +66,6 @@ lazy_static! {
 }
 
 pub static COMMUTATING: AtomicBool = AtomicBool::new(false);
-
-use calibrate_adc::CalibrateADC;
-use pos_vel_control::PosVelControl;
-use torque_control::TorqueControl;
-
-#[enum_dispatch(ControlLoop)]
-pub enum Commutator {
-    CalibrateADC,
-    TorqueControl,
-    PosVelControl,
-}
-
-impl Commutator {
-    pub fn donate_hardware(hw: ControlHardware) {
-        *COMMUTATION_STATE
-            .try_lock()
-            .expect("Lock held while trying to donate hardware") = Some(CommutationState {
-            commutator: None,
-            hw,
-        });
-    }
-
-    pub fn set(commutator: Commutator) {
-        block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
-            vars.commutator = Some(commutator);
-        });
-    }
-
-    pub fn enable_loop() {
-        block_interrupt(
-            device::interrupt::ADC1_2,
-            &COMMUTATION_STATE,
-            |mut control_vars| {
-                COMMUTATING.store(true, Ordering::Relaxed);
-                control_vars.hw.pwm.enable_loop();
-            },
-        );
-    }
-
-    pub fn is_enabled() -> bool {
-        COMMUTATING.load(Ordering::Acquire)
-    }
-
-    // TODO(blakely): Don't disable the loop until currents have settled down low enough.
-    pub fn disable_loop() {
-        block_interrupt(
-            device::interrupt::ADC1_2,
-            &COMMUTATION_STATE,
-            |mut control_vars| {
-                COMMUTATING.store(false, Ordering::Relaxed);
-                control_vars.hw.pwm.disable_loop();
-            },
-        );
-    }
-}
-
-pub enum CommutationLoop {
-    Running,
-    Finished,
-}
-
-// Trait that any control loops need to implement.
-#[enum_dispatch]
-pub trait ControlLoop: Send {
-    fn commutate(
-        &mut self,
-        sensor_state: &SensorState,
-        hardware: &mut ControlHardware,
-    ) -> CommutationLoop;
-    fn finished(&mut self);
-}
 
 impl OutgoingFdcanFrame for SensorState {
     fn pack(&self) -> crate::comms::fdcan::FdcanMessage {
