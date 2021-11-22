@@ -2,6 +2,7 @@
 #![no_main]
 
 use bldc::comms::fdcan::FdcanMessage;
+use bldc::comms::messages::Message;
 use bldc::{
     comms::fdcan::{self, IncomingFdcanFrame},
     commutation::{
@@ -42,8 +43,8 @@ impl IncomingFdcanFrame for StopStreamCmd {
 fn main() -> ! {
     // Acquire the driver.
     let mut driver = driver::take_hardware().configure_peripherals().calibrate();
-    driver.on_message(|message: FdcanMessage| match message.id {
-        0x15 => {
+    driver.on_message(|message: FdcanMessage| match message.id.into() {
+        Message::CalibrateEZero => {
             fdcan::send_message(&EZeroMsg {
                 angle: 123.,
                 angle_raw: 456,
@@ -51,16 +52,16 @@ fn main() -> ! {
                 e_raw: 1337.,
             });
         }
-        0x17 => {
+        Message::TorqueControl => {
             let cmd = TorqueControlCmd::unpack(message);
             Commutator::set(TorqueControl::new(cmd.duration, cmd.currents))
         }
-        0x18 => Commutator::set(PosVelControl::new()),
-        0x19 => {
+        Message::PosVelControl => Commutator::set(PosVelControl::new()),
+        Message::PosVelCommand => {
             let cmd = PosVelCommand::unpack(message);
             PosVelControl::command(cmd);
         }
-        0x1A => {
+        Message::BeginStateStream => {
             let cmd = StartStreamCmd::unpack(message);
             let frequency = cmd.frequency.max(1.);
             timer::periodic_callback(frequency, frequency / 10_000., || {
@@ -69,7 +70,7 @@ fn main() -> ! {
                 };
             });
         }
-        0x1B => {
+        Message::EndStateStream => {
             timer::stop_periodic_callback();
         }
         _ => (),

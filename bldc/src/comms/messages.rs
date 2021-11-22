@@ -19,4 +19,20 @@ pub enum Message {
     BeginStateStream = 0x1A,
     SensorState = 0x1B,
     EndStateStream = 0x1C,
+
+    Unknown,
+}
+
+impl From<u32> for Message {
+    fn from(id: u32) -> Self {
+        match id {
+            0x15 => Message::CalibrateEZero,
+            0x17 => Message::TorqueControl,
+            0x18 => Message::PosVelControl,
+            0x19 => Message::PosVelCommand,
+            0x1A => Message::BeginStateStream,
+            0x1B => Message::EndStateStream,
+            _ => Message::Unknown,
+        }
+    }
 }
