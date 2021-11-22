@@ -1,11 +1,8 @@
-extern crate alloc;
-
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame},
     current_sensing::PhaseCurrents,
 };
-use alloc::boxed::Box;
 
 // Current sense for a given duration.
 pub struct IdleCurrentSenseCmd {
@@ -14,28 +11,25 @@ pub struct IdleCurrentSenseCmd {
 
 // During commutation, no PWM is performed. The current is sampled once at each loop for a given
 // duration then averaged across all samples.
-pub struct IdleCurrentSensor<'a> {
+pub struct IdleCurrentSensor {
     total_counts: u32,
     loop_count: u32,
     sample: PhaseCurrents,
-    callback: Box<dyn for<'r> FnMut(&'r PhaseCurrents) + 'a + Send>,
+    callback: for<'r> fn(&'r PhaseCurrents),
 }
 
-impl<'a> IdleCurrentSensor<'a> {
-    pub fn new(
-        duration: f32,
-        callback: impl for<'r> FnMut(&'r PhaseCurrents) + 'a + Send,
-    ) -> IdleCurrentSensor<'a> {
+impl IdleCurrentSensor {
+    pub fn new(duration: f32, callback: for<'r> fn(&'r PhaseCurrents)) -> IdleCurrentSensor {
         IdleCurrentSensor {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
             sample: PhaseCurrents::new(),
-            callback: Box::new(callback),
+            callback,
         }
     }
 }
 
-impl<'a> ControlLoop for IdleCurrentSensor<'a> {
+impl ControlLoop for IdleCurrentSensor {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,

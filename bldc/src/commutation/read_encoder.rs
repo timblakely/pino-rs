@@ -1,9 +1,6 @@
-extern crate alloc;
-
 use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
 
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
-use alloc::boxed::Box;
 
 pub struct EncoderResults {
     angle: f32,
@@ -28,21 +25,21 @@ impl EncoderResults {
 }
 
 // Simple one-loop encoder read.
-pub struct ReadEncoder<'a> {
+pub struct ReadEncoder {
     encoder_results: EncoderResults,
-    callback: Box<dyn for<'r> FnMut(&'r EncoderResults) + 'a + Send>,
+    callback: for<'r> fn(&'r EncoderResults),
 }
 
-impl<'a> ReadEncoder<'a> {
-    pub fn new(callback: impl for<'r> FnMut(&'r EncoderResults) + 'a + Send) -> ReadEncoder<'a> {
+impl ReadEncoder {
+    pub fn new(callback: for<'r> fn(&'r EncoderResults)) -> ReadEncoder {
         ReadEncoder {
             encoder_results: EncoderResults::new(),
-            callback: Box::new(callback),
+            callback,
         }
     }
 }
 
-impl<'a> ControlLoop for ReadEncoder<'a> {
+impl ControlLoop for ReadEncoder {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,

@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 
 use crate::{
@@ -7,7 +5,6 @@ use crate::{
     current_sensing::PhaseCurrents,
     pwm::PwmDuty,
 };
-use alloc::boxed::Box;
 
 // Switch a single phase via PWM and measure the steady-state current for a period of time to
 // calculate the phase resistance.
@@ -31,7 +28,7 @@ pub enum Phase {
     C,
 }
 
-pub struct MeasureResistance<'a> {
+pub struct MeasureResistance {
     total_counts: u32,
     loop_count: u32,
 
@@ -42,16 +39,16 @@ pub struct MeasureResistance<'a> {
     v_bus: f32,
     current: PhaseCurrents,
 
-    callback: Box<dyn for<'r> FnMut(&'r Resistance) + 'a + Send>,
+    callback: for<'r> fn(&'r Resistance),
 }
 
-impl<'a> MeasureResistance<'a> {
+impl MeasureResistance {
     pub fn new(
         duration: f32,
         target_voltage: f32,
         phase: Phase,
-        callback: impl for<'r> FnMut(&'r Resistance) + 'a + Send,
-    ) -> MeasureResistance<'a> {
+        callback: for<'r> fn(&'r Resistance),
+    ) -> MeasureResistance {
         MeasureResistance {
             total_counts: (40_000 as f32 * duration) as u32,
             loop_count: 0,
@@ -60,7 +57,7 @@ impl<'a> MeasureResistance<'a> {
             pwm_duty: 0.,
             v_bus: 0.,
             current: PhaseCurrents::new(),
-            callback: Box::new(callback),
+            callback,
         }
     }
 }
@@ -69,7 +66,7 @@ pub struct Resistance {
     resistance: f32,
 }
 
-impl<'a> ControlLoop for MeasureResistance<'a> {
+impl ControlLoop for MeasureResistance {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,

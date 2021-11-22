@@ -1,8 +1,5 @@
-extern crate alloc;
-
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
-use alloc::boxed::Box;
 
 // Sample current one one phase for a period of time, building a histogram of currents.
 
@@ -25,24 +22,24 @@ enum Phase {
     C,
 }
 
-pub struct IdleCurrentDistribution<'a> {
+pub struct IdleCurrentDistribution {
     total_counts: u32,
     loop_count: u32,
     bins: [u32; 16],
     current_min: f32,
     current_binsize: f32,
     phase: Phase,
-    callback: Box<dyn for<'r> FnMut(&'r [u32; 16]) + 'a + Send>,
+    callback: for<'r> fn(&'r [u32; 16]),
 }
 
-impl<'a> IdleCurrentDistribution<'a> {
+impl IdleCurrentDistribution {
     pub fn new(
         duration: f32,
         center: f32,
         range: f32,
         phase: u8,
-        callback: impl for<'r> FnMut(&'r [u32; 16]) + 'a + Send,
-    ) -> IdleCurrentDistribution<'a> {
+        callback: for<'r> fn(&'r [u32; 16]),
+    ) -> IdleCurrentDistribution {
         let current_min = center - range;
         let current_binsize = range * 2. / 16.;
         let phase = match phase {
@@ -57,12 +54,12 @@ impl<'a> IdleCurrentDistribution<'a> {
             current_min,
             current_binsize,
             phase,
-            callback: Box::new(callback),
+            callback,
         }
     }
 }
 
-impl<'a> ControlLoop for IdleCurrentDistribution<'a> {
+impl ControlLoop for IdleCurrentDistribution {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,

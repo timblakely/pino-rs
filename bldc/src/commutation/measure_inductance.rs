@@ -1,12 +1,9 @@
-extern crate alloc;
-
 use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
     pwm::PwmDuty,
 };
-use alloc::boxed::Box;
 
 // Drive a zero-centered square wave through the phases, which should result in a triangle wave of
 // current through the inductor. Measuring current over time should give us the inductance via
@@ -38,7 +35,7 @@ enum Direction {
     Down,
 }
 
-pub struct MeasureInductance<'a> {
+pub struct MeasureInductance {
     total_counts: u32,
     loop_count: u32,
     direction: Direction,
@@ -52,19 +49,19 @@ pub struct MeasureInductance<'a> {
     pwm_duty: f32,
     sample_pwm_ccr: u16,
 
-    callback: Box<dyn FnMut([f32; 3]) + 'a + Send>,
+    callback: fn([f32; 3]),
 
     switches: u32,
 }
 
-impl<'a> MeasureInductance<'a> {
+impl MeasureInductance {
     pub fn new(
         duration: f32,
         square_wave_freq: u32,
         pwm_duty: f32,
         sample_pwm_percent: f32,
-        callback: impl FnMut([f32; 3]) + 'a + Send,
-    ) -> MeasureInductance<'a> {
+        callback: fn([f32; 3]),
+    ) -> MeasureInductance {
         let square_wave_freq = square_wave_freq.min(20_000).max(MIN_SQUARE_WAVE_FREQ);
         let pwm_duty = pwm_duty.max(0.).min(MAX_PWM_DUTY_CYCLE);
         if pwm_duty > MAX_PWM_DUTY_CYCLE {
@@ -86,14 +83,14 @@ impl<'a> MeasureInductance<'a> {
             pwm_duty,
             sample_pwm_ccr: (((2125 - pwm_ccr) as f32 * sample_pwm_percent) as u16 + 1).max(2124),
 
-            callback: Box::new(callback),
+            callback,
 
             switches: 0,
         }
     }
 }
 
-impl<'a> ControlLoop for MeasureInductance<'a> {
+impl ControlLoop for MeasureInductance {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,
