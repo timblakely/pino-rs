@@ -42,9 +42,12 @@ impl Commutator {
         });
     }
 
-    pub fn set(commutator: Commutator) {
+    pub fn set<C>(commutator: C)
+    where
+        C: Into<Commutator>,
+    {
         block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
-            vars.commutator = Some(commutator);
+            vars.commutator = Some(commutator.into());
         });
     }
 

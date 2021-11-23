@@ -34,6 +34,6 @@ impl EnterTorqueControl {
 
 impl HandlesMessage<Cmd> for EnterTorqueControl {
     fn handle(&self, cmd: Cmd) {
-        Commutator::set(TorqueControl::new(cmd.duration, cmd.currents).into());
+        Commutator::set(TorqueControl::new(cmd.duration, cmd.currents));
     }
 }

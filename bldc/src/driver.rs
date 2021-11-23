@@ -548,7 +548,7 @@ impl Driver<Init> {
 impl Driver<Calibrating> {
     pub fn calibrate(self) -> Driver<Ready> {
         Commutator::enable_loop();
-        Commutator::set(CalibrateADC::new(2., move |_| {}).into());
+        Commutator::set(CalibrateADC::new(2., move |_| {}));
         while Commutator::is_enabled() {}
         Commutator::disable_loop();
 

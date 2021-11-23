@@ -23,7 +23,6 @@ impl EnterPosVelControl {
 
 impl HandlesMessage<Cmd> for EnterPosVelControl {
     fn handle(&self, _cmd: Cmd) {
-        //
-        Commutator::set(PosVelControl::new().into());
+        Commutator::set(PosVelControl::new());
     }
 }
