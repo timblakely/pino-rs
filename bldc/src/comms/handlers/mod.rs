@@ -14,33 +14,45 @@ where
 }
 
 // This implements effectively the same thing as the `enum_dispatch` crate. However, it currently
-// doesn't handle associated types, which means we'd have to fall back to generics, and generic
+// doesn't handle associated types, which means we'd have to fall back to generics and generic
 // specialization doesn't really work without associated types in Rust at the moment. So until
 // `enum_dispatch` supports associated types, we roll our own here.
 // DEPENDS: https://gitlab.com/antonok/enum_dispatch/-/issues/30
-pub enum MessageHandler {
-    TorqueControl(TorqueControl),
-    EnterPosVelControl(EnterPosVelControl),
-}
-
-impl FdcanMessageHandler for MessageHandler {
-    fn process(&self, msg: FdcanMessage) {
-        use MessageHandler::*;
-        match self {
-            TorqueControl(inner) => inner.handle(msg.into()),
-            EnterPosVelControl(inner) => inner.handle(msg.into()),
+macro_rules! dispatchable_enum {
+    ( $n: ident { $( $x: ident,)* }) => {
+        pub enum $n {
+            $(
+                $x($x),
+            )*
         }
-    }
+
+        $( from_impl!($n { $x }); )*
+
+        impl FdcanMessageHandler for $n {
+            fn process(&self, msg: FdcanMessage) {
+                use $n::*;
+                match self {
+                    $( $x(inner) => inner.handle(msg.into()), )*
+                }
+            }
+        }
+    };
+    ( $n: ident { $( $x: ident ),* ,}) => {
+        dispatchable_enum!($n { $( $x, )* });
+    };
 }
 
-impl From<TorqueControl> for MessageHandler {
-    fn from(inner: TorqueControl) -> Self {
-        MessageHandler::TorqueControl(inner)
-    }
+macro_rules! from_impl {
+    ( $h:ident { $n:ident } ) => {
+        impl From<$n> for $h {
+            fn from(inner: $n) -> Self {
+                $h::$n(inner)
+            }
+        }
+    };
 }
 
-impl From<EnterPosVelControl> for MessageHandler {
-    fn from(inner: EnterPosVelControl) -> Self {
-        MessageHandler::EnterPosVelControl(inner)
-    }
-}
+dispatchable_enum!(MessageHandler {
+    TorqueControl,
+    EnterPosVelControl,
+});
