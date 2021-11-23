@@ -5,8 +5,8 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
-use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 
+use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;

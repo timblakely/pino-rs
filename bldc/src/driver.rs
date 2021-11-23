@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use crate::comms::fdcan::{self, FdcanMessage};
 use crate::comms::fdcan::{Fdcan, Running};
 use crate::commutation::calibrate_adc::CalibrateADC;
@@ -13,8 +15,10 @@ use crate::{current_sensing, timer};
 use crate::{ic::drv8323rs, ic::ma702};
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
+use enum_dispatch::enum_dispatch;
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
+
 const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
 pub struct Driver<S> {
