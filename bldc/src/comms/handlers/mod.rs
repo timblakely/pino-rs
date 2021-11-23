@@ -4,7 +4,7 @@ pub mod torque_control;
 use super::fdcan::{FdcanMessage, FdcanMessageHandler};
 
 use pos_vel_control::EnterPosVelControl;
-use torque_control::TorqueControl;
+use torque_control::EnterTorqueControl;
 
 trait HandlesMessage<T>
 where
@@ -53,6 +53,6 @@ macro_rules! from_impl {
 }
 
 dispatchable_enum!(MessageHandler {
-    TorqueControl,
+    EnterTorqueControl,
     EnterPosVelControl,
 });

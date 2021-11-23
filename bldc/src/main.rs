@@ -3,6 +3,7 @@
 
 use bldc::comms::fdcan::FdcanMessage;
 use bldc::comms::handlers::pos_vel_control::EnterPosVelControl;
+use bldc::comms::handlers::torque_control::EnterTorqueControl;
 use bldc::comms::messages::{EZeroMsg, Message};
 use bldc::commutation::pos_vel_control::PosVelControl;
 use bldc::commutation::torque_control::TorqueControl;
@@ -52,7 +53,8 @@ fn main() -> ! {
     //     _ => (),
     // });
 
-    driver.on(0x18, EnterPosVelControl {});
+    driver.on(EnterTorqueControl::ID, EnterTorqueControl::new());
+    driver.on(EnterPosVelControl::ID, EnterPosVelControl::new());
 
     driver.listen();
 }

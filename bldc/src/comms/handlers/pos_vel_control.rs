@@ -13,6 +13,14 @@ impl From<FdcanMessage> for Cmd {
 }
 pub struct EnterPosVelControl {}
 
+impl EnterPosVelControl {
+    pub const ID: u32 = 0x18;
+
+    pub fn new() -> Self {
+        EnterPosVelControl {}
+    }
+}
+
 impl HandlesMessage<Cmd> for EnterPosVelControl {
     fn handle(&self, _cmd: Cmd) {
         //

@@ -1,6 +1,9 @@
-use crate::{comms::fdcan::FdcanMessage, foc::DQCurrents};
+use crate::{
+    comms::fdcan::FdcanMessage, commutation::torque_control::TorqueControl, foc::DQCurrents,
+};
 
 use super::HandlesMessage;
+use crate::commutation::Commutator;
 
 pub struct Cmd {
     pub duration: f32,
@@ -19,10 +22,18 @@ impl From<FdcanMessage> for Cmd {
         }
     }
 }
-pub struct TorqueControl {}
+pub struct EnterTorqueControl {}
 
-impl HandlesMessage<Cmd> for TorqueControl {
-    fn handle(&self, _cmd: Cmd) {
-        //
+impl EnterTorqueControl {
+    pub const ID: u32 = 0x17;
+
+    pub fn new() -> Self {
+        EnterTorqueControl {}
+    }
+}
+
+impl HandlesMessage<Cmd> for EnterTorqueControl {
+    fn handle(&self, cmd: Cmd) {
+        Commutator::set(TorqueControl::new(cmd.duration, cmd.currents).into());
     }
 }
