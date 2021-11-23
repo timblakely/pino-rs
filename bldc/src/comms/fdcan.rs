@@ -108,7 +108,6 @@ pub struct Running;
 
 pub struct Fdcan<S> {
     mode_state: S,
-    message_handler: Option<fn(FdcanMessage)>,
     handlers: FnvIndexMap<u32, MessageHandler, 16>,
 }
 
@@ -125,16 +124,11 @@ pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
             sram: Sram::get(),
             fdcan,
         },
-        message_handler: None,
         handlers: FnvIndexMap::new(),
     }
 }
 
 impl<T> Fdcan<T> {
-    pub fn message_handler(&mut self, message_handler: fn(FdcanMessage)) {
-        self.message_handler = Some(message_handler);
-    }
-
     pub fn set_handler<H: Into<MessageHandler>>(&mut self, id: u32, handler: H) {
         let handler: MessageHandler = handler.into();
         self.handlers
@@ -300,7 +294,6 @@ impl Fdcan<Init> {
         });
         Fdcan {
             mode_state: Running,
-            message_handler: self.message_handler,
             handlers: self.handlers,
         }
     }

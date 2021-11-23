@@ -1,5 +1,4 @@
-use crate::comms::fdcan::{self, FdcanMessage};
-use crate::comms::fdcan::{Fdcan, Running};
+use crate::comms::fdcan::{self, Fdcan, Running};
 use crate::comms::MessageHandler;
 use crate::commutation::calibrate_adc::CalibrateADC;
 use crate::commutation::{Commutator, ControlHardware};
@@ -568,13 +567,6 @@ impl Driver<Ready> {
             let fdcan = &mut self.mode_state.hardware.fdcan;
             fdcan.process_messages();
         }
-    }
-
-    pub fn on_message(&mut self, message_handler: fn(FdcanMessage)) {
-        self.mode_state
-            .hardware
-            .fdcan
-            .message_handler(message_handler);
     }
 
     pub fn on<T>(&mut self, id: u32, handler: T)
