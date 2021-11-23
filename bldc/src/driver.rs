@@ -1,7 +1,6 @@
-use core::marker::PhantomData;
-
 use crate::comms::fdcan::{self, FdcanMessage};
 use crate::comms::fdcan::{Fdcan, Running};
+use crate::comms::MessageHandler;
 use crate::commutation::calibrate_adc::CalibrateADC;
 use crate::commutation::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
@@ -15,7 +14,6 @@ use crate::{current_sensing, timer};
 use crate::{ic::drv8323rs, ic::ma702};
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
-use enum_dispatch::enum_dispatch;
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
@@ -577,5 +575,12 @@ impl Driver<Ready> {
             .hardware
             .fdcan
             .message_handler(message_handler);
+    }
+
+    pub fn on<T>(&mut self, id: u32, handler: T)
+    where
+        T: Into<MessageHandler>,
+    {
+        self.mode_state.hardware.fdcan.set_handler(id, handler);
     }
 }

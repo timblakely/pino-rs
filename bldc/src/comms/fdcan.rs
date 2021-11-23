@@ -7,12 +7,15 @@ use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
+use heapless::FnvIndexMap;
 use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
 use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
+
+use super::MessageHandler;
 
 pub mod extended_filter;
 pub mod rx_fifo;
@@ -27,6 +30,10 @@ pub const FDCAN_INTERRUPTS: [device::Interrupt; 2] = [
     device::interrupt::FDCAN1_INTR0_IT,
     device::interrupt::FDCAN1_INTR1_IT,
 ];
+
+pub trait FdcanMessageHandler {
+    fn process(&self, msg: FdcanMessage);
+}
 
 #[repr(C)]
 pub struct SramBlock {
@@ -102,6 +109,7 @@ pub struct Running;
 pub struct Fdcan<S> {
     mode_state: S,
     message_handler: Option<fn(FdcanMessage)>,
+    handlers: FnvIndexMap<u32, MessageHandler, 16>,
 }
 
 pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
@@ -118,12 +126,20 @@ pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
             fdcan,
         },
         message_handler: None,
+        handlers: FnvIndexMap::new(),
     }
 }
 
 impl<T> Fdcan<T> {
     pub fn message_handler(&mut self, message_handler: fn(FdcanMessage)) {
         self.message_handler = Some(message_handler);
+    }
+
+    pub fn set_handler<H: Into<MessageHandler>>(&mut self, id: u32, handler: H) {
+        let handler: MessageHandler = handler.into();
+        self.handlers
+            .insert(id, handler)
+            .unwrap_or_else(|_| panic!("Ran out of callback space"));
     }
 }
 
@@ -285,6 +301,7 @@ impl Fdcan<Init> {
         Fdcan {
             mode_state: Running,
             message_handler: self.message_handler,
+            handlers: self.handlers,
         }
     }
 }
@@ -320,9 +337,13 @@ impl Fdcan<Running> {
             &FDCAN_RECEIVE_BUF,
             |mut buf| buf.dequeue(),
         ) {
-            if let Some(handler) = self.message_handler {
-                (handler)(message);
+            if let Some(handler) = self.handlers.get_mut(&message.id) {
+                handler.process(message);
             }
+
+            // if let Some(handler) = self.message_handler {
+            //     (handler)(message);
+            // }
         }
     }
 }
