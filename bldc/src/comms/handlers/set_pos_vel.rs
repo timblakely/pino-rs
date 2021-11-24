@@ -3,7 +3,8 @@ use crate::{
         fdcan::FdcanMessage,
         messages::{FdcanID, MessageID},
     },
-    control_loops::pos_vel_control::{PositionVelocity, PosVelState},
+    control_loops::pos_vel_control::{PosVelState, PositionVelocity},
+    driver::{Driver, Ready},
 };
 
 use super::HandlesMessage;
@@ -50,7 +51,7 @@ impl SetPosVel {
 }
 
 impl HandlesMessage<Cmd> for SetPosVel {
-    fn handle(&self, cmd: Cmd) {
+    fn handle(&self, _driver: &mut Driver<Ready>, cmd: Cmd) {
         PositionVelocity::command(cmd.into());
     }
 }

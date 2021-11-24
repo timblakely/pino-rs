@@ -4,6 +4,7 @@ use crate::{
         messages::{FdcanID, MessageID},
     },
     control_loops::torque_control::TorqueControl,
+    driver::{Driver, Ready},
     foc::DQCurrents,
 };
 
@@ -37,7 +38,7 @@ impl EnterTorqueControl {
 }
 
 impl HandlesMessage<Cmd> for EnterTorqueControl {
-    fn handle(&self, cmd: Cmd) {
+    fn handle(&self, _driver: &mut Driver<Ready>, cmd: Cmd) {
         Controller::set(TorqueControl::new(cmd.duration, cmd.currents));
     }
 }

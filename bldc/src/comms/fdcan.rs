@@ -7,7 +7,6 @@ use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
-use heapless::FnvIndexMap;
 use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
@@ -15,25 +14,21 @@ use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
-use super::MessageHandler;
-
 pub mod extended_filter;
 pub mod rx_fifo;
 pub mod standard_filter;
 pub mod tx_event;
 pub mod tx_fifo;
 
-type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<FdcanMessage, 16>;
+const RECEIVE_BUFFER_SIZE: usize = 16;
+
+type ReceiveBuffer = ringbuffer::ConstGenericRingBuffer<FdcanMessage, RECEIVE_BUFFER_SIZE>;
 pub static FDCAN_RECEIVE_BUF: SpinLock<Option<&'static mut ReceiveBuffer>> = SpinLock::new(None);
 static SHARED_DEVICE: SpinLock<Option<FdcanDevice>> = SpinLock::new(None);
 pub const FDCAN_INTERRUPTS: [device::Interrupt; 2] = [
     device::interrupt::FDCAN1_INTR0_IT,
     device::interrupt::FDCAN1_INTR1_IT,
 ];
-
-pub trait FdcanMessageHandler {
-    fn process(&self, msg: FdcanMessage);
-}
 
 #[repr(C)]
 pub struct SramBlock {
@@ -108,7 +103,6 @@ pub struct Running;
 
 pub struct Fdcan<S> {
     mode_state: S,
-    handlers: FnvIndexMap<u32, MessageHandler, 16>,
 }
 
 pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
@@ -124,16 +118,6 @@ pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
             sram: Sram::get(),
             fdcan,
         },
-        handlers: FnvIndexMap::new(),
-    }
-}
-
-impl<T> Fdcan<T> {
-    pub fn set_handler<H: Into<MessageHandler>>(&mut self, id: u32, handler: H) {
-        let handler: MessageHandler = handler.into();
-        self.handlers
-            .insert(id, handler)
-            .unwrap_or_else(|_| panic!("Ran out of callback space"));
     }
 }
 
@@ -294,7 +278,6 @@ impl Fdcan<Init> {
         });
         Fdcan {
             mode_state: Running,
-            handlers: self.handlers,
         }
     }
 }
@@ -319,25 +302,17 @@ fn send_serialized_message(message: FdcanMessage) {
 }
 
 impl Fdcan<Running> {
-    pub fn process_messages(&mut self) {
+    pub fn pending_message(&self) -> Option<FdcanMessage> {
         // Not only do we lock the receive buffer, but we prevent the FDCAN_INTR1 (Rx) from
         // firing - the only other interrupt that shares this particular buffer - ensuring
         // we aren't preempted when reading from it. This is fine in general since the
         // peripheral itself has an internal buffer, but we don't want to block the interrupt for
         // too long in case there's a torrent of incoming messages.
-        while let Some(message) = crate::util::interrupts::block_interrupts(
+        crate::util::interrupts::block_interrupts(
             FDCAN_INTERRUPTS,
             &FDCAN_RECEIVE_BUF,
             |mut buf| buf.dequeue(),
-        ) {
-            if let Some(handler) = self.handlers.get_mut(&message.id) {
-                handler.process(message);
-            }
-
-            // if let Some(handler) = self.message_handler {
-            //     (handler)(message);
-            // }
-        }
+        )
     }
 }
 

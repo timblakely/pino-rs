@@ -2,7 +2,7 @@ use crate::comms::fdcan::{self, Fdcan, Running};
 use crate::comms::messages::FdcanID;
 use crate::comms::MessageHandler;
 use crate::control_loops::calibrate_adc::CalibrateADC;
-use crate::control_loops::{Controller, ControlHardware};
+use crate::control_loops::{ControlHardware, Controller};
 use crate::cordic::Cordic;
 use crate::encoder::Encoder;
 use crate::pwm::PwmOutput;
@@ -14,6 +14,7 @@ use crate::{current_sensing, timer};
 use crate::{ic::drv8323rs, ic::ma702};
 use cortex_m::peripheral as cm;
 use drv8323rs::Drv8323rs;
+use heapless::FnvIndexMap;
 use stm32g4::stm32g474 as device;
 use third_party::m4vga_rs::util::armv7m::{disable_irq, enable_irq};
 
@@ -21,6 +22,7 @@ const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 
 pub struct Driver<S> {
     pub mode_state: S,
+    message_handlers: FnvIndexMap<u32, MessageHandler, 16>,
 }
 
 pub struct DriverHardware {
@@ -209,6 +211,7 @@ fn init(
             adc5,
             cordic,
         },
+        message_handlers: FnvIndexMap::new(),
     }
 }
 
@@ -541,6 +544,7 @@ impl Driver<Init> {
                     fdcan,
                 },
             },
+            message_handlers: self.message_handlers,
         }
     }
 }
@@ -556,6 +560,7 @@ impl Driver<Calibrating> {
             mode_state: Ready {
                 hardware: self.mode_state.hardware,
             },
+            message_handlers: self.message_handlers,
         }
     }
 }
@@ -565,8 +570,11 @@ impl Driver<Ready> {
         Controller::enable_loop();
 
         loop {
-            let fdcan = &mut self.mode_state.hardware.fdcan;
-            fdcan.process_messages();
+            while let Some(message) = self.mode_state.hardware.fdcan.pending_message() {
+                if let Some(handler) = self.message_handlers.get(&message.id) {
+                    handler.process(&mut self, message);
+                }
+            }
         }
     }
 
@@ -575,9 +583,8 @@ impl Driver<Ready> {
         T: Into<MessageHandler>,
         T: FdcanID,
     {
-        self.mode_state
-            .hardware
-            .fdcan
-            .set_handler(T::ID.into(), handler);
+        self.message_handlers
+            .insert(T::ID.into(), handler.into())
+            .unwrap_or_else(|_| panic!("Ran out of callback space"));
     }
 }

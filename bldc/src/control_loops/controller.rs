@@ -33,6 +33,10 @@ pub trait Commutate: Send {
 }
 
 impl Controller {
+    pub fn new() -> Controller {
+        Controller {}
+    }
+
     pub fn donate_hardware(hw: ControlHardware) {
         *COMMUTATION_STATE
             .try_lock()
