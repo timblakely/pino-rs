@@ -1,7 +1,7 @@
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 use crate::{
-    comms::messages::PosVelCommand,
+    comms::messages::PosVelState,
     foc::FieldOrientedControlImpl,
     pi_controller::PIController,
     util::buffered_state::{BufferedState, StateReader, StateWriter},
@@ -14,13 +14,13 @@ const DT: f32 = 1. / 40_000.;
 
 // Position and velocity control using FoC wrapped in torque control.
 
-static COMMAND_BUFFER: SpinLock<Option<BufferedState<PosVelCommand>>> = SpinLock::new(None);
-static COMMAND: SpinLock<Option<StateWriter<PosVelCommand>>> = SpinLock::new(None);
+static COMMAND_BUFFER: SpinLock<Option<BufferedState<PosVelState>>> = SpinLock::new(None);
+static COMMAND: SpinLock<Option<StateWriter<PosVelState>>> = SpinLock::new(None);
 
 pub struct PosVelControl {
     foc: FieldOrientedControlImpl,
 
-    commands: StateReader<PosVelCommand>,
+    commands: StateReader<PosVelState>,
 }
 
 impl PosVelControl {
@@ -32,7 +32,7 @@ impl PosVelControl {
         let foc = FieldOrientedControlImpl::new(q_controller, d_controller);
 
         let mut command_buffer = COMMAND_BUFFER.lock();
-        *command_buffer = Some(BufferedState::new(PosVelCommand {
+        *command_buffer = Some(BufferedState::new(PosVelState {
             position: 0.,
             velocity: 0.,
             stiffness_gain: 0.,
@@ -53,7 +53,7 @@ impl PosVelControl {
         }
     }
 
-    pub fn command<'a>(command: PosVelCommand) {
+    pub fn command<'a>(command: PosVelState) {
         if let Some(state) = &mut *COMMAND.try_lock().expect("Lock held when writing command") {
             *state.update() = command;
         }

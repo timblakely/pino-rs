@@ -1,9 +1,11 @@
 pub mod pos_vel_control;
+pub mod set_pos_vel;
 pub mod torque_control;
 
 use super::fdcan::{FdcanMessage, FdcanMessageHandler};
 
 use pos_vel_control::EnterPosVelControl;
+use set_pos_vel::SetPosVel;
 use torque_control::EnterTorqueControl;
 
 trait HandlesMessage<T>
@@ -55,4 +57,5 @@ macro_rules! from_impl {
 dispatchable_enum!(MessageHandler {
     EnterTorqueControl,
     EnterPosVelControl,
+    SetPosVel,
 });

@@ -11,7 +11,7 @@ pub struct TorqueControlCmd {
 }
 
 #[derive(Clone, Copy)]
-pub struct PosVelCommand {
+pub struct PosVelState {
     pub position: f32,
     pub velocity: f32,
     pub stiffness_gain: f32,
@@ -47,7 +47,7 @@ pub enum Message {
     // EZero = 0x16,
     TorqueControl(TorqueControlCmd),
     PosVelControl,
-    PosVelCommand(PosVelCommand),
+    PosVelCommand(PosVelState),
 
     BeginStateStream(StartStreamCmd),
     SensorState,
@@ -61,7 +61,7 @@ impl Message {
             0x15 => Message::CalibrateEZero(CalibrateEZeroCmd::unpack(message)),
             0x17 => Message::TorqueControl(TorqueControlCmd::unpack(message)),
             0x18 => Message::PosVelControl,
-            0x19 => Message::PosVelCommand(PosVelCommand::unpack(message)),
+            0x19 => Message::PosVelCommand(PosVelState::unpack(message)),
             0x1A => Message::BeginStateStream(StartStreamCmd::unpack(message)),
             0x1C => Message::EndStateStream,
             _ => Message::Unknown,
@@ -83,10 +83,10 @@ impl IncomingFdcanFrame for TorqueControlCmd {
     }
 }
 
-impl IncomingFdcanFrame for PosVelCommand {
+impl IncomingFdcanFrame for PosVelState {
     fn unpack(message: FdcanMessage) -> Self {
         let buffer = message.data;
-        PosVelCommand {
+        PosVelState {
             position: f32::from_bits(buffer[0]),
             velocity: f32::from_bits(buffer[1]),
             stiffness_gain: f32::from_bits(buffer[2]),
@@ -138,7 +138,8 @@ pub trait FdcanID {
 
 pub enum MessageID {
     EnterTorqueControl = 0x17,
-    EnterPosVelControl,
+    EnterPosVelControl = 0x18,
+    SetPosVel = 0x19,
 }
 
 impl From<MessageID> for u32 {
