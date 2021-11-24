@@ -2,8 +2,8 @@ use super::HandlesMessage;
 use crate::comms::fdcan::FdcanMessage;
 
 use crate::comms::messages::{FdcanID, MessageID};
-use crate::commutation::pos_vel_control::PosVelControl;
-use crate::commutation::Commutator;
+use crate::control_loops::pos_vel_control::PositionVelocity;
+use crate::control_loops::Commutator;
 
 pub struct Cmd {}
 
@@ -25,7 +25,7 @@ impl EnterPosVelControl {
 
 impl HandlesMessage<Cmd> for EnterPosVelControl {
     fn handle(&self, _cmd: Cmd) {
-        Commutator::set(PosVelControl::new());
+        Commutator::set(PositionVelocity::new());
     }
 }
 

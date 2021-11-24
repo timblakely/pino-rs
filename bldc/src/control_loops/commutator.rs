@@ -3,7 +3,7 @@ use enum_dispatch::enum_dispatch;
 use crate::util::interrupts::block_interrupt;
 
 use super::calibrate_adc::CalibrateADC;
-use super::pos_vel_control::PosVelControl;
+use super::pos_vel_control::PositionVelocity;
 use super::torque_control::TorqueControl;
 use super::{CommutationState, ControlHardware, SensorState, COMMUTATING, COMMUTATION_STATE};
 use core::sync::atomic::Ordering;
@@ -18,7 +18,7 @@ pub enum CommutationLoop {
 pub enum Commutator {
     CalibrateADC,
     TorqueControl,
-    PosVelControl,
+    PositionVelocity,
 }
 
 // Trait that any control loops need to implement.

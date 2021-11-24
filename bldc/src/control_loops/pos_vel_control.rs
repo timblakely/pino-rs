@@ -25,13 +25,13 @@ pub struct PosVelState {
     pub torque_constant: f32,
 }
 
-pub struct PosVelControl {
+pub struct PositionVelocity {
     foc: FieldOrientedControlImpl,
     commands: StateReader<PosVelState>,
 }
 
-impl PosVelControl {
-    pub fn new() -> PosVelControl {
+impl PositionVelocity {
+    pub fn new() -> PositionVelocity {
         // TODO(blakely): Don't hard-code these; instead pull from either global config,
         // calibration, or FDCAN command.
         let q_controller = PIController::new(1.421142407046769, 0.055681818, 24.);
@@ -54,7 +54,7 @@ impl PosVelControl {
 
         *COMMAND.lock() = Some(writer);
 
-        PosVelControl {
+        PositionVelocity {
             foc,
             commands: reader,
         }
@@ -67,7 +67,7 @@ impl PosVelControl {
     }
 }
 
-impl ControlLoop for PosVelControl {
+impl ControlLoop for PositionVelocity {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,

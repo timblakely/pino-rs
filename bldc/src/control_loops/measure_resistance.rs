@@ -19,7 +19,7 @@ const MAX_PWM_DUTY_CYCLE: f32 = 0.08;
 pub struct MeasureResistanceCmd {
     pub duration: f32,
     pub target_voltage: f32,
-    pub phase: crate::commutation::measure_resistance::Phase,
+    pub phase: crate::control_loops::measure_resistance::Phase,
 }
 
 pub enum Phase {
@@ -135,9 +135,9 @@ impl IncomingFdcanFrame for MeasureResistanceCmd {
             target_voltage: f32::from_bits(buffer[1]),
 
             phase: match buffer[2] & 0xFFu32 {
-                0 => crate::commutation::measure_resistance::Phase::A,
-                1 => crate::commutation::measure_resistance::Phase::B,
-                _ => crate::commutation::measure_resistance::Phase::C,
+                0 => crate::control_loops::measure_resistance::Phase::A,
+                1 => crate::control_loops::measure_resistance::Phase::B,
+                _ => crate::control_loops::measure_resistance::Phase::C,
             },
         }
     }

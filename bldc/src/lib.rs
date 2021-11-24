@@ -3,7 +3,7 @@
 pub mod util;
 
 pub mod comms;
-pub mod commutation;
+pub mod control_loops;
 pub mod cordic;
 pub mod current_sensing;
 pub mod driver;

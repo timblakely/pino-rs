@@ -3,7 +3,7 @@ use crate::{
         fdcan::FdcanMessage,
         messages::{FdcanID, MessageID},
     },
-    commutation::pos_vel_control::{PosVelControl, PosVelState},
+    control_loops::pos_vel_control::{PositionVelocity, PosVelState},
 };
 
 use super::HandlesMessage;
@@ -51,7 +51,7 @@ impl SetPosVel {
 
 impl HandlesMessage<Cmd> for SetPosVel {
     fn handle(&self, cmd: Cmd) {
-        PosVelControl::command(cmd.into());
+        PositionVelocity::command(cmd.into());
     }
 }
 

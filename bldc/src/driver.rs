@@ -1,8 +1,8 @@
 use crate::comms::fdcan::{self, Fdcan, Running};
 use crate::comms::messages::FdcanID;
 use crate::comms::MessageHandler;
-use crate::commutation::calibrate_adc::CalibrateADC;
-use crate::commutation::{Commutator, ControlHardware};
+use crate::control_loops::calibrate_adc::CalibrateADC;
+use crate::control_loops::{Commutator, ControlHardware};
 use crate::cordic::Cordic;
 use crate::encoder::Encoder;
 use crate::pwm::PwmOutput;

@@ -3,12 +3,12 @@ use crate::{
         fdcan::FdcanMessage,
         messages::{FdcanID, MessageID},
     },
-    commutation::torque_control::TorqueControl,
+    control_loops::torque_control::TorqueControl,
     foc::DQCurrents,
 };
 
 use super::HandlesMessage;
-use crate::commutation::Commutator;
+use crate::control_loops::Commutator;
 
 pub struct Cmd {
     pub duration: f32,
