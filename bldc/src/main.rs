@@ -45,8 +45,8 @@ fn main() -> ! {
     //     _ => (),
     // });
 
-    driver.on(EnterTorqueControl::ID, EnterTorqueControl::new());
-    driver.on(EnterPosVelControl::ID, EnterPosVelControl::new());
+    driver.add_message_handler(EnterTorqueControl::new());
+    driver.add_message_handler(EnterPosVelControl::new());
 
     driver.listen();
 }

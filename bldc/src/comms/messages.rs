@@ -131,3 +131,18 @@ impl IncomingFdcanFrame for StartStreamCmd {
         }
     }
 }
+
+pub trait FdcanID {
+    const ID: MessageID;
+}
+
+pub enum MessageID {
+    EnterTorqueControl = 0x17,
+    EnterPosVelControl,
+}
+
+impl From<MessageID> for u32 {
+    fn from(id: MessageID) -> Self {
+        id as u32
+    }
+}
