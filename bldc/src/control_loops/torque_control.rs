@@ -1,4 +1,4 @@
-use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
+use super::{ControlLoop, ControlHardware, Commutate, SensorState};
 use crate::{
     foc::{DQCurrents, FieldOrientedControlImpl},
     led::Led,
@@ -37,15 +37,15 @@ impl TorqueControl {
     }
 }
 
-impl ControlLoop for TorqueControl {
+impl Commutate for TorqueControl {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> CommutationLoop {
+    ) -> ControlLoop {
         Led::<crate::led::Red>::on_while(|| {
             let encoder_state = match hardware.encoder.state() {
-                None => return CommutationLoop::Running,
+                None => return ControlLoop::Running,
                 Some(state) => state,
             };
             // Get the current rail voltage.
@@ -71,9 +71,9 @@ impl ControlLoop for TorqueControl {
                     //     tim1.ccr3.write(|w| w.ccr3().bits(0));
                     //     return LoopState::Finished;
                     // }
-                    CommutationLoop::Running
+                    ControlLoop::Running
                 }
-                _ => CommutationLoop::Running,
+                _ => ControlLoop::Running,
             }
         })
     }

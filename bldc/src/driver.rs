@@ -2,7 +2,7 @@ use crate::comms::fdcan::{self, Fdcan, Running};
 use crate::comms::messages::FdcanID;
 use crate::comms::MessageHandler;
 use crate::control_loops::calibrate_adc::CalibrateADC;
-use crate::control_loops::{Commutator, ControlHardware};
+use crate::control_loops::{Controller, ControlHardware};
 use crate::cordic::Cordic;
 use crate::encoder::Encoder;
 use crate::pwm::PwmOutput;
@@ -526,7 +526,7 @@ impl Driver<Init> {
                 .bits32()
         });
 
-        Commutator::donate_hardware(ControlHardware {
+        Controller::donate_hardware(ControlHardware {
             current_sensor: current_sensor,
             pwm,
             encoder,
@@ -547,10 +547,10 @@ impl Driver<Init> {
 
 impl Driver<Calibrating> {
     pub fn calibrate(self) -> Driver<Ready> {
-        Commutator::enable_loop();
-        Commutator::set(CalibrateADC::new(2., move |_| {}));
-        while Commutator::is_enabled() {}
-        Commutator::disable_loop();
+        Controller::enable_loop();
+        Controller::set(CalibrateADC::new(2., move |_| {}));
+        while Controller::is_enabled() {}
+        Controller::disable_loop();
 
         Driver {
             mode_state: Ready {
@@ -562,7 +562,7 @@ impl Driver<Calibrating> {
 
 impl Driver<Ready> {
     pub fn listen(mut self) -> ! {
-        Commutator::enable_loop();
+        Controller::enable_loop();
 
         loop {
             let fdcan = &mut self.mode_state.hardware.fdcan;

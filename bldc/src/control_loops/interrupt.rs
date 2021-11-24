@@ -4,7 +4,7 @@ use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use crate::led::{self, Led};
 
 use super::{
-    CommutationLoop, Commutator, ControlHardware, ControlLoop, SensorState, COMMUTATING,
+    ControlLoop, Controller, ControlHardware, Commutate, SensorState, COMMUTATING,
     COMMUTATION_STATE, SENSOR_STATE,
 };
 
@@ -56,7 +56,7 @@ fn commutate() {
     }
 
     // If there's a control callback, call it. Otherwise just idle.
-    let commutator: &mut Commutator = match loop_vars.commutator {
+    let commutator: &mut Controller = match loop_vars.commutator {
         None => return,
         Some(ref mut x) => x,
     };
@@ -68,7 +68,7 @@ fn commutate() {
     let sensor_state = &SENSOR_STATE.read().unwrap();
 
     match commutator.commutate(sensor_state, &mut loop_vars.hw) {
-        CommutationLoop::Finished => {
+        ControlLoop::Finished => {
             COMMUTATING.store(false, core::sync::atomic::Ordering::Relaxed);
             let pwm = &mut loop_vars.hw.pwm;
             // Make sure we pull all phases low in case the control loops didn't. Better safe than

@@ -9,13 +9,13 @@ use super::{CommutationState, ControlHardware, SensorState, COMMUTATING, COMMUTA
 use core::sync::atomic::Ordering;
 use stm32g4::stm32g474 as device;
 
-pub enum CommutationLoop {
+pub enum ControlLoop {
     Running,
     Finished,
 }
 
-#[enum_dispatch(ControlLoop)]
-pub enum Commutator {
+#[enum_dispatch(Commutate)]
+pub enum Controller {
     CalibrateADC,
     TorqueControl,
     PositionVelocity,
@@ -23,16 +23,16 @@ pub enum Commutator {
 
 // Trait that any control loops need to implement.
 #[enum_dispatch]
-pub trait ControlLoop: Send {
+pub trait Commutate: Send {
     fn commutate(
         &mut self,
         sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> CommutationLoop;
+    ) -> ControlLoop;
     fn finished(&mut self);
 }
 
-impl Commutator {
+impl Controller {
     pub fn donate_hardware(hw: ControlHardware) {
         *COMMUTATION_STATE
             .try_lock()
@@ -44,7 +44,7 @@ impl Commutator {
 
     pub fn set<C>(commutator: C)
     where
-        C: Into<Commutator>,
+        C: Into<Controller>,
     {
         block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
             vars.commutator = Some(commutator.into());

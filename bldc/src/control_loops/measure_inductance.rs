@@ -1,4 +1,4 @@
-use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
+use super::{ControlLoop, ControlHardware, Commutate, SensorState};
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
     current_sensing::PhaseCurrents,
@@ -90,12 +90,12 @@ impl MeasureInductance {
     }
 }
 
-impl ControlLoop for MeasureInductance {
+impl Commutate for MeasureInductance {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> CommutationLoop {
+    ) -> ControlLoop {
         let current_sensor = &mut hardware.current_sensor;
         current_sensor.sampling_period_long();
 
@@ -151,9 +151,9 @@ impl ControlLoop for MeasureInductance {
             x if x >= self.total_counts => {
                 pwm.zero_phases();
                 pwm.reset_current_sample();
-                CommutationLoop::Finished
+                ControlLoop::Finished
             }
-            _ => CommutationLoop::Running,
+            _ => ControlLoop::Running,
         }
     }
 

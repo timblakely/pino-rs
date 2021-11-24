@@ -11,7 +11,7 @@ use lazy_static::lazy_static;
 
 pub mod calibrate_adc;
 pub mod calibrate_e_zero;
-pub mod commutator;
+pub mod controller;
 pub mod idle_current_distribution;
 pub mod idle_current_sensor;
 pub mod interrupt;
@@ -22,7 +22,7 @@ pub mod pos_vel_control;
 pub mod read_encoder;
 pub mod torque_control;
 
-pub use commutator::{CommutationLoop, Commutator, ControlLoop};
+pub use controller::{ControlLoop, Controller, Commutate};
 
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;
@@ -56,7 +56,7 @@ impl SensorState {
 
 // TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
 pub struct CommutationState {
-    pub commutator: Option<commutator::Commutator>,
+    pub commutator: Option<controller::Controller>,
     pub hw: ControlHardware,
 }
 

@@ -8,7 +8,7 @@ use crate::{
 };
 
 use super::HandlesMessage;
-use crate::control_loops::Commutator;
+use crate::control_loops::Controller;
 
 pub struct Cmd {
     pub duration: f32,
@@ -38,7 +38,7 @@ impl EnterTorqueControl {
 
 impl HandlesMessage<Cmd> for EnterTorqueControl {
     fn handle(&self, cmd: Cmd) {
-        Commutator::set(TorqueControl::new(cmd.duration, cmd.currents));
+        Controller::set(TorqueControl::new(cmd.duration, cmd.currents));
     }
 }
 

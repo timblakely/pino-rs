@@ -1,4 +1,4 @@
-use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
+use super::{ControlLoop, ControlHardware, Commutate, SensorState};
 
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
@@ -64,12 +64,12 @@ impl<'a> PhaseCurrent {
     }
 }
 
-impl ControlLoop for PhaseCurrent {
+impl Commutate for PhaseCurrent {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> CommutationLoop {
+    ) -> ControlLoop {
         let current_sensor = &mut hardware.current_sensor;
         current_sensor.sampling_period_fast();
 
@@ -86,7 +86,7 @@ impl ControlLoop for PhaseCurrent {
         // Safeguard against anything unexpected
         if current > 20. || current < -20. {
             pwm.zero_phases();
-            return CommutationLoop::Finished;
+            return ControlLoop::Finished;
         };
         let target_voltage = self.controller.update(current, self.target_current);
         let duty = target_voltage.abs() / v_bus;
@@ -117,9 +117,9 @@ impl ControlLoop for PhaseCurrent {
         match self.loop_count {
             x if x >= self.total_counts => {
                 pwm.zero_phases();
-                CommutationLoop::Finished
+                ControlLoop::Finished
             }
-            _ => CommutationLoop::Running,
+            _ => ControlLoop::Running,
         }
     }
 

@@ -6,7 +6,7 @@ use crate::{
     util::buffered_state::{BufferedState, StateReader, StateWriter},
 };
 
-use super::{CommutationLoop, ControlLoop, SensorState};
+use super::{ControlLoop, Commutate, SensorState};
 
 const GEAR_RATIO: f32 = 6.0;
 const DT: f32 = 1. / 40_000.;
@@ -67,14 +67,14 @@ impl PositionVelocity {
     }
 }
 
-impl ControlLoop for PositionVelocity {
+impl Commutate for PositionVelocity {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,
         hardware: &mut super::ControlHardware,
-    ) -> CommutationLoop {
+    ) -> ControlLoop {
         let encoder_state = match hardware.encoder.state() {
-            None => return CommutationLoop::Running,
+            None => return ControlLoop::Running,
             Some(state) => state,
         };
         let mech_angle = encoder_state.angle_multiturn.in_radians();
@@ -98,7 +98,7 @@ impl ControlLoop for PositionVelocity {
             DT,
         );
         hardware.pwm.set_voltages(v_bus, phase_voltages);
-        CommutationLoop::Running
+        ControlLoop::Running
     }
     fn finished(&mut self) {}
 }

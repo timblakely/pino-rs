@@ -1,6 +1,6 @@
 use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
 
-use super::{CommutationLoop, ControlHardware, ControlLoop, SensorState};
+use super::{ControlLoop, ControlHardware, Commutate, SensorState};
 
 pub struct EncoderResults {
     angle: f32,
@@ -39,12 +39,12 @@ impl ReadEncoder {
     }
 }
 
-impl ControlLoop for ReadEncoder {
+impl Commutate for ReadEncoder {
     fn commutate(
         &mut self,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> CommutationLoop {
+    ) -> ControlLoop {
         let results = &mut self.encoder_results;
 
         let encoder = &hardware.encoder;
@@ -60,7 +60,7 @@ impl ControlLoop for ReadEncoder {
             results.a_cos = cos;
             results.a_sin = sin;
         }
-        CommutationLoop::Finished
+        ControlLoop::Finished
     }
 
     fn finished(&mut self) {
