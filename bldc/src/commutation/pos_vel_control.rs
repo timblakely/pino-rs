@@ -1,7 +1,6 @@
 use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 use crate::{
-    comms::messages::PosVelState,
     foc::FieldOrientedControlImpl,
     pi_controller::PIController,
     util::buffered_state::{BufferedState, StateReader, StateWriter},
@@ -17,9 +16,17 @@ const DT: f32 = 1. / 40_000.;
 static COMMAND_BUFFER: SpinLock<Option<BufferedState<PosVelState>>> = SpinLock::new(None);
 static COMMAND: SpinLock<Option<StateWriter<PosVelState>>> = SpinLock::new(None);
 
+#[derive(Clone, Copy)]
+pub struct PosVelState {
+    pub position: f32,
+    pub velocity: f32,
+    pub stiffness_gain: f32,
+    pub damping_gain: f32,
+    pub torque_constant: f32,
+}
+
 pub struct PosVelControl {
     foc: FieldOrientedControlImpl,
-
     commands: StateReader<PosVelState>,
 }
 

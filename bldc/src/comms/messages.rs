@@ -10,15 +10,6 @@ pub struct TorqueControlCmd {
     pub currents: DQCurrents,
 }
 
-#[derive(Clone, Copy)]
-pub struct PosVelState {
-    pub position: f32,
-    pub velocity: f32,
-    pub stiffness_gain: f32,
-    pub damping_gain: f32,
-    pub torque_constant: f32,
-}
-
 pub struct EZeroMsg {
     pub e_angle: f32,
     pub e_raw: f32,
@@ -47,7 +38,6 @@ pub enum Message {
     // EZero = 0x16,
     TorqueControl(TorqueControlCmd),
     PosVelControl,
-    PosVelCommand(PosVelState),
 
     BeginStateStream(StartStreamCmd),
     SensorState,
@@ -61,7 +51,6 @@ impl Message {
             0x15 => Message::CalibrateEZero(CalibrateEZeroCmd::unpack(message)),
             0x17 => Message::TorqueControl(TorqueControlCmd::unpack(message)),
             0x18 => Message::PosVelControl,
-            0x19 => Message::PosVelCommand(PosVelState::unpack(message)),
             0x1A => Message::BeginStateStream(StartStreamCmd::unpack(message)),
             0x1C => Message::EndStateStream,
             _ => Message::Unknown,
@@ -79,19 +68,6 @@ impl IncomingFdcanFrame for TorqueControlCmd {
                 q: f32::from_bits(buffer[1]),
                 d: f32::from_bits(buffer[2]),
             },
-        }
-    }
-}
-
-impl IncomingFdcanFrame for PosVelState {
-    fn unpack(message: FdcanMessage) -> Self {
-        let buffer = message.data;
-        PosVelState {
-            position: f32::from_bits(buffer[0]),
-            velocity: f32::from_bits(buffer[1]),
-            stiffness_gain: f32::from_bits(buffer[2]),
-            damping_gain: f32::from_bits(buffer[3]),
-            torque_constant: f32::from_bits(buffer[4]),
         }
     }
 }

@@ -1,9 +1,9 @@
 use crate::{
     comms::{
         fdcan::FdcanMessage,
-        messages::{FdcanID, MessageID, PosVelState},
+        messages::{FdcanID, MessageID},
     },
-    commutation::pos_vel_control::PosVelControl,
+    commutation::pos_vel_control::{PosVelControl, PosVelState},
 };
 
 use super::HandlesMessage;
