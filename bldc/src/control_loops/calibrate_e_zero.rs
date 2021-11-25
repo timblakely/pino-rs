@@ -1,4 +1,4 @@
-use super::{ControlLoop, ControlHardware, Commutate, SensorState};
+use super::{LoopState, ControlHardware, Commutate, SensorState};
 use crate::comms::messages::EZeroMsg;
 use crate::{
     foc::{DQCurrents, FieldOrientedControlImpl},
@@ -61,7 +61,7 @@ impl Commutate for CalibrateEZero {
         &mut self,
         sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> ControlLoop {
+    ) -> LoopState {
         Led::<crate::led::Red>::on_while(|| {
             let ControlHardware {
                 ref current_sensor,
@@ -70,7 +70,7 @@ impl Commutate for CalibrateEZero {
                 ..
             } = hardware;
             let encoder_state = match encoder.state() {
-                None => return ControlLoop::Running,
+                None => return LoopState::Running,
                 Some(state) => state,
             };
             // Calculate the required PWM values via field oriented control.
@@ -90,9 +90,9 @@ impl Commutate for CalibrateEZero {
                     //     tim1.ccr3.write(|w| w.ccr3().bits(0));
                     //     return LoopState::Finished;
                     // }
-                    ControlLoop::Running
+                    LoopState::Running
                 }
-                _ => ControlLoop::Running,
+                _ => LoopState::Running,
             }
         })
     }

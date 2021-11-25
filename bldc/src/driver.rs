@@ -23,6 +23,7 @@ const V_BUS_GAIN: f32 = 16.0; // 24v with a 150k/10k voltage divider.
 pub struct Driver<S> {
     pub mode_state: S,
     message_handlers: FnvIndexMap<u32, MessageHandler, 16>,
+    controller: Controller,
 }
 
 pub struct DriverHardware {
@@ -212,6 +213,7 @@ fn init(
             cordic,
         },
         message_handlers: FnvIndexMap::new(),
+        controller: Controller::new(),
     }
 }
 
@@ -529,7 +531,7 @@ impl Driver<Init> {
                 .bits32()
         });
 
-        Controller::donate_hardware(ControlHardware {
+        self.controller.donate_hardware(ControlHardware {
             current_sensor: current_sensor,
             pwm,
             encoder,
@@ -545,34 +547,37 @@ impl Driver<Init> {
                 },
             },
             message_handlers: self.message_handlers,
+            controller: self.controller,
         }
     }
 }
 
 impl Driver<Calibrating> {
     pub fn calibrate(self) -> Driver<Ready> {
-        Controller::enable_loop();
-        Controller::set(CalibrateADC::new(2., move |_| {}));
-        while Controller::is_enabled() {}
-        Controller::disable_loop();
+        let controller = &self.controller;
+        controller.enable_loop();
+        controller.set_loop(CalibrateADC::new(2., move |_| {}));
+        while controller.is_enabled() {}
+        controller.disable_loop();
 
         Driver {
             mode_state: Ready {
                 hardware: self.mode_state.hardware,
             },
             message_handlers: self.message_handlers,
+            controller: self.controller,
         }
     }
 }
 
 impl Driver<Ready> {
     pub fn listen(mut self) -> ! {
-        Controller::enable_loop();
+        self.controller.enable_loop();
 
         loop {
             while let Some(message) = self.mode_state.hardware.fdcan.pending_message() {
                 if let Some(handler) = self.message_handlers.get(&message.id) {
-                    handler.process(&mut self, message);
+                    handler.process(&mut self.controller, message);
                 }
             }
         }

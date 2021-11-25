@@ -2,9 +2,7 @@ use super::HandlesMessage;
 use crate::comms::fdcan::FdcanMessage;
 
 use crate::comms::messages::{FdcanID, MessageID};
-use crate::control_loops::pos_vel_control::PositionVelocity;
 use crate::control_loops::Controller;
-use crate::driver::{Driver, Ready};
 
 pub struct Cmd {}
 
@@ -25,8 +23,8 @@ impl EnterPosVelControl {
 }
 
 impl HandlesMessage<Cmd> for EnterPosVelControl {
-    fn handle(&self, _driver: &mut Driver<Ready>, _cmd: Cmd) {
-        Controller::set(PositionVelocity::new());
+    fn handle(&self, _controller: &mut Controller, _cmd: Cmd) {
+        // Controller::set(PositionVelocity::new());
     }
 }
 

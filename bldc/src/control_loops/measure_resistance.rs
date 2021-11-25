@@ -1,4 +1,4 @@
-use super::{ControlLoop, ControlHardware, Commutate, SensorState};
+use super::{LoopState, ControlHardware, Commutate, SensorState};
 
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame},
@@ -71,7 +71,7 @@ impl Commutate for MeasureResistance {
         &mut self,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> ControlLoop {
+    ) -> LoopState {
         let current_sensor = &mut hardware.current_sensor;
         current_sensor.sampling_period_fast();
 
@@ -107,9 +107,9 @@ impl Commutate for MeasureResistance {
         match self.loop_count {
             x if x >= self.total_counts => {
                 pwm.zero_phases();
-                ControlLoop::Finished
+                LoopState::Finished
             }
-            _ => ControlLoop::Running,
+            _ => LoopState::Running,
         }
     }
 

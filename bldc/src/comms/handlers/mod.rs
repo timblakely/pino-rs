@@ -2,7 +2,7 @@ pub mod pos_vel_control;
 pub mod set_pos_vel;
 pub mod torque_control;
 
-use crate::driver::{Driver, Ready};
+use crate::control_loops::Controller;
 
 use super::fdcan::FdcanMessage;
 
@@ -14,7 +14,7 @@ trait HandlesMessage<T>
 where
     T: From<FdcanMessage>,
 {
-    fn handle(&self, driver: &mut Driver<Ready>, msg: T);
+    fn handle(&self, controller: &mut Controller, msg: T);
 }
 
 // This implements effectively the same thing as the `enum_dispatch` crate. However, it currently
@@ -33,10 +33,10 @@ macro_rules! dispatchable_enum {
         $( from_impl!($n { $x }); )*
 
         impl $n {
-            pub fn process(&self, driver: &mut Driver<Ready>, msg: FdcanMessage) {
+            pub fn process(&self, controller: &mut Controller, msg: FdcanMessage) {
                 use $n::*;
                 match self {
-                    $( $x(inner) => inner.handle(driver, msg.into()), )*
+                    $( $x(inner) => inner.handle(controller, msg.into()), )*
                 }
             }
         }

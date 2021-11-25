@@ -4,10 +4,7 @@ use crate::{
     current_sensing::{self, CurrentSensor, PhaseCurrents},
     encoder::{Encoder, EncoderState},
     pwm::PwmOutput,
-    util::seq_lock::SeqLock,
 };
-use core::sync::atomic::AtomicBool;
-use lazy_static::lazy_static;
 
 pub mod calibrate_adc;
 pub mod calibrate_e_zero;
@@ -22,12 +19,11 @@ pub mod pos_vel_control;
 pub mod read_encoder;
 pub mod torque_control;
 
-pub use controller::{ControlLoop, Controller, Commutate};
+pub use controller::{Commutate, Controller, LoopState};
 
 // TODO(blakely): This is probably bad form...
 pub use idle_current_distribution::*;
 pub use idle_current_sensor::*;
-use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
 pub struct ControlHardware {
     pub current_sensor: CurrentSensor<current_sensing::Ready>,
@@ -53,19 +49,6 @@ impl SensorState {
         }
     }
 }
-
-// TODO(blakely): Wrap the peripherals in some slightly higher-level abstractions.
-pub struct CommutationState {
-    pub commutator: Option<controller::Controller>,
-    pub hw: ControlHardware,
-}
-
-pub static COMMUTATION_STATE: SpinLock<Option<CommutationState>> = SpinLock::new(None);
-lazy_static! {
-    pub static ref SENSOR_STATE: SeqLock<Option<SensorState>> = SeqLock::new(None);
-}
-
-pub static COMMUTATING: AtomicBool = AtomicBool::new(false);
 
 impl OutgoingFdcanFrame for SensorState {
     fn pack(&self) -> crate::comms::fdcan::FdcanMessage {

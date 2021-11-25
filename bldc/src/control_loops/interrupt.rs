@@ -3,10 +3,8 @@ use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 
 use crate::led::{self, Led};
 
-use super::{
-    ControlLoop, Controller, ControlHardware, Commutate, SensorState, COMMUTATING,
-    COMMUTATION_STATE, SENSOR_STATE,
-};
+use super::controller::{Commutate, ControlLoop, COMMUTATING, INTERRUPT_SHARED, SENSOR_STATE};
+use super::{ControlHardware, LoopState, SensorState};
 
 // Interrupt handler triggered by TIM1[CH4]'s tim_trgo2. Under normal circumstances this function
 // will be called continuously, regardless of the control loop in place. Note that the control loop
@@ -24,7 +22,7 @@ fn ADC1_2() {
 }
 
 fn commutate() {
-    let mut loop_vars = COMMUTATION_STATE.lock();
+    let mut loop_vars = INTERRUPT_SHARED.lock();
     let mut loop_vars = loop_vars.as_mut().expect("Loop variables not set");
 
     // Identify current state of the BLDC.
@@ -56,7 +54,7 @@ fn commutate() {
     }
 
     // If there's a control callback, call it. Otherwise just idle.
-    let commutator: &mut Controller = match loop_vars.commutator {
+    let control_loop: &mut ControlLoop = match loop_vars.control_loop {
         None => return,
         Some(ref mut x) => x,
     };
@@ -67,8 +65,8 @@ fn commutate() {
     // nothing should be able to preempt us between when we set it above and now.
     let sensor_state = &SENSOR_STATE.read().unwrap();
 
-    match commutator.commutate(sensor_state, &mut loop_vars.hw) {
-        ControlLoop::Finished => {
+    match control_loop.commutate(sensor_state, &mut loop_vars.hw) {
+        LoopState::Finished => {
             COMMUTATING.store(false, core::sync::atomic::Ordering::Relaxed);
             let pwm = &mut loop_vars.hw.pwm;
             // Make sure we pull all phases low in case the control loops didn't. Better safe than
@@ -78,8 +76,8 @@ fn commutate() {
             // Reset the current sampling to be between PWM pulses.
             pwm.reset_current_sample();
             pwm.reset_deadtime();
-            commutator.finished();
-            loop_vars.commutator = None;
+            control_loop.finished();
+            loop_vars.control_loop = None;
         }
         _ => return,
     }

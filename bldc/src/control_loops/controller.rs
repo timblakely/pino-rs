@@ -1,21 +1,19 @@
-use enum_dispatch::enum_dispatch;
-
-use crate::util::interrupts::block_interrupt;
-
 use super::calibrate_adc::CalibrateADC;
 use super::pos_vel_control::PositionVelocity;
 use super::torque_control::TorqueControl;
-use super::{CommutationState, ControlHardware, SensorState, COMMUTATING, COMMUTATION_STATE};
+use super::{ControlHardware, SensorState};
+use crate::util::interrupts::block_interrupt;
+use crate::util::seq_lock::SeqLock;
+use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
+use enum_dispatch::enum_dispatch;
+use lazy_static::lazy_static;
 use stm32g4::stm32g474 as device;
+use third_party::m4vga_rs::util::spin_lock::SpinLock;
 
-pub enum ControlLoop {
-    Running,
-    Finished,
-}
-
+// TODO(blakely): move to mod.rs
 #[enum_dispatch(Commutate)]
-pub enum Controller {
+pub enum ControlLoop {
     CalibrateADC,
     TorqueControl,
     PositionVelocity,
@@ -28,37 +26,46 @@ pub trait Commutate: Send {
         &mut self,
         sensor_state: &SensorState,
         hardware: &mut ControlHardware,
-    ) -> ControlLoop;
+    ) -> LoopState;
     fn finished(&mut self);
 }
+
+pub struct InterruptData {
+    pub control_loop: Option<ControlLoop>,
+    pub hw: ControlHardware,
+}
+
+pub static COMMUTATING: AtomicBool = AtomicBool::new(false);
+pub static INTERRUPT_SHARED: SpinLock<Option<InterruptData>> = SpinLock::new(None);
+lazy_static! {
+    pub static ref SENSOR_STATE: SeqLock<Option<SensorState>> = SeqLock::new(None);
+}
+
+pub enum LoopState {
+    Running,
+    Finished,
+}
+
+pub struct Controller {}
 
 impl Controller {
     pub fn new() -> Controller {
         Controller {}
     }
 
-    pub fn donate_hardware(hw: ControlHardware) {
-        *COMMUTATION_STATE
-            .try_lock()
-            .expect("Lock held while trying to donate hardware") = Some(CommutationState {
-            commutator: None,
-            hw,
-        });
-    }
-
-    pub fn set<C>(commutator: C)
+    pub fn set_loop<C>(&self, control_loop: C)
     where
-        C: Into<Controller>,
+        C: Into<ControlLoop>,
     {
-        block_interrupt(device::interrupt::ADC1_2, &COMMUTATION_STATE, |mut vars| {
-            vars.commutator = Some(commutator.into());
+        block_interrupt(device::interrupt::ADC1_2, &INTERRUPT_SHARED, |mut vars| {
+            vars.control_loop = Some(control_loop.into());
         });
     }
 
-    pub fn enable_loop() {
+    pub fn enable_loop(&self) {
         block_interrupt(
             device::interrupt::ADC1_2,
-            &COMMUTATION_STATE,
+            &INTERRUPT_SHARED,
             |mut control_vars| {
                 COMMUTATING.store(true, Ordering::Relaxed);
                 control_vars.hw.pwm.enable_loop();
@@ -66,19 +73,28 @@ impl Controller {
         );
     }
 
-    pub fn is_enabled() -> bool {
+    pub fn is_enabled(&self) -> bool {
         COMMUTATING.load(Ordering::Acquire)
     }
 
     // TODO(blakely): Don't disable the loop until currents have settled down low enough.
-    pub fn disable_loop() {
+    pub fn disable_loop(&self) {
         block_interrupt(
             device::interrupt::ADC1_2,
-            &COMMUTATION_STATE,
+            &INTERRUPT_SHARED,
             |mut control_vars| {
                 COMMUTATING.store(false, Ordering::Relaxed);
                 control_vars.hw.pwm.disable_loop();
             },
         );
+    }
+
+    pub fn donate_hardware(&self, hw: ControlHardware) {
+        *INTERRUPT_SHARED
+            .try_lock()
+            .expect("Lock held while trying to donate hardware") = Some(InterruptData {
+            control_loop: None,
+            hw,
+        });
     }
 }
