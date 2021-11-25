@@ -53,7 +53,7 @@ impl SetPosVel {
 }
 
 impl HandlesMessage<Cmd> for SetPosVel {
-    fn handle(&self, _controller: &mut Controller, cmd: Cmd) {
+    fn handle(&self, _: &mut Controller, cmd: Cmd) {
         PositionVelocity::command(cmd.into());
     }
 }
