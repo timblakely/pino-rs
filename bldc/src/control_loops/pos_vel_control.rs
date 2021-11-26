@@ -70,7 +70,7 @@ impl PositionVelocity {
 impl Commutate for PositionVelocity {
     fn commutate(
         &mut self,
-        _loop_state: LoopState,
+        loop_state: LoopState,
         _sensor_state: &SensorState,
         hardware: &mut super::ControlHardware,
     ) -> LoopState {
@@ -83,9 +83,13 @@ impl Commutate for PositionVelocity {
 
         let commands = self.commands.read();
 
-        let torque_desired = commands.stiffness_gain * (commands.position - mech_angle)
-            + commands.damping_gain * (commands.velocity - mech_velocity);
-
+        let torque_desired = match loop_state {
+            LoopState::Shutdown => 0.,
+            _ => {
+                commands.stiffness_gain * (commands.position - mech_angle)
+                    + commands.damping_gain * (commands.velocity - mech_velocity)
+            }
+        };
         let q_current = torque_desired / (commands.torque_constant * GEAR_RATIO);
         self.foc.q_current(q_current);
 
@@ -99,7 +103,15 @@ impl Commutate for PositionVelocity {
             DT,
         );
         hardware.pwm.set_voltages(v_bus, phase_voltages);
-        LoopState::Running
+        // If we're shutting down, wait until the mechanical angle is zero before we indicate we're
+        // idle.
+        match loop_state {
+            LoopState::Shutdown => match mech_velocity {
+                x if x < 0.01 => LoopState::Idle,
+                _ => LoopState::Shutdown,
+            },
+            x => x,
+        }
     }
     fn finished(&mut self) {}
 }

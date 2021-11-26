@@ -116,6 +116,7 @@ pub enum MessageID {
     EnterTorqueControl = 0x17,
     EnterPosVelControl = 0x18,
     SetPosVel = 0x19,
+    DisableControlLoop = 0x1A,
 }
 
 impl From<MessageID> for u32 {

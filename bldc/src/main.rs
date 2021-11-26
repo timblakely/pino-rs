@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 #![no_main]
 
+use bldc::comms::handlers::disable_control_loop::DisableControlLoop;
 use bldc::comms::handlers::pos_vel_control::EnterPosVelControl;
 use bldc::comms::handlers::set_pos_vel::SetPosVel;
 use bldc::comms::handlers::torque_control::EnterTorqueControl;
@@ -49,6 +50,7 @@ fn main() -> ! {
     driver.add_message_handler(EnterTorqueControl::new());
     driver.add_message_handler(EnterPosVelControl::new());
     driver.add_message_handler(SetPosVel::new());
+    driver.add_message_handler(DisableControlLoop::new());
 
     driver.listen();
 }

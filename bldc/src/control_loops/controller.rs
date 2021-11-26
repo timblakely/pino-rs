@@ -64,6 +64,8 @@ impl Controller {
         block_interrupt(device::interrupt::ADC1_2, &INTERRUPT_SHARED, |mut vars| {
             vars.control_loop = Some(control_loop.into());
         });
+
+        self.enable_loop();
     }
 
     pub fn enable_loop(&self) {

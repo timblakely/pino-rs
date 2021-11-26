@@ -1,3 +1,4 @@
+pub mod disable_control_loop;
 pub mod pos_vel_control;
 pub mod set_pos_vel;
 pub mod torque_control;
@@ -6,6 +7,7 @@ use crate::control_loops::Controller;
 
 use super::fdcan::FdcanMessage;
 
+use disable_control_loop::DisableControlLoop;
 use pos_vel_control::EnterPosVelControl;
 use set_pos_vel::SetPosVel;
 use torque_control::EnterTorqueControl;
@@ -60,4 +62,5 @@ dispatchable_enum!(MessageHandler {
     EnterTorqueControl,
     EnterPosVelControl,
     SetPosVel,
+    DisableControlLoop,
 });
