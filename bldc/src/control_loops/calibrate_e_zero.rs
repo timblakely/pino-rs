@@ -1,4 +1,4 @@
-use super::{LoopState, ControlHardware, Commutate, SensorState};
+use super::{Commutate, ControlHardware, LoopState, SensorState};
 use crate::comms::messages::EZeroMsg;
 use crate::{
     foc::{DQCurrents, FieldOrientedControlImpl},
@@ -59,6 +59,7 @@ impl CalibrateEZero {
 impl Commutate for CalibrateEZero {
     fn commutate(
         &mut self,
+        _loop_state: LoopState,
         sensor_state: &SensorState,
         hardware: &mut ControlHardware,
     ) -> LoopState {

@@ -1,4 +1,4 @@
-use super::{LoopState, ControlHardware, Commutate, SensorState};
+use super::{Commutate, ControlHardware, LoopState, SensorState};
 use crate::comms::fdcan::{FdcanMessage, IncomingFdcanFrame, OutgoingFdcanFrame};
 
 // Sample current one one phase for a period of time, building a histogram of currents.
@@ -62,6 +62,7 @@ impl IdleCurrentDistribution {
 impl Commutate for IdleCurrentDistribution {
     fn commutate(
         &mut self,
+        _loop_state: LoopState,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
     ) -> LoopState {
@@ -80,7 +81,7 @@ impl Commutate for IdleCurrentDistribution {
         self.bins[bin_index] += 1;
 
         match self.loop_count {
-            x if x >= self.total_counts => LoopState::Finished,
+            x if x >= self.total_counts => LoopState::Idle,
             _ => LoopState::Running,
         }
     }

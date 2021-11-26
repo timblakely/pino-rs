@@ -3,7 +3,7 @@ use crate::{
     current_sensing::PhaseCurrents,
 };
 
-use super::{LoopState, ControlHardware, Commutate, SensorState};
+use super::{Commutate, ControlHardware, LoopState, SensorState};
 
 // Calibrate ADC values.
 pub struct CalibrateADCCmd {
@@ -31,6 +31,7 @@ impl CalibrateADC {
 impl Commutate for CalibrateADC {
     fn commutate(
         &mut self,
+        _loop_state: LoopState,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
     ) -> LoopState {
@@ -46,7 +47,7 @@ impl Commutate for CalibrateADC {
                     self.sample.phase_b,
                     self.sample.phase_c,
                 );
-                LoopState::Finished
+                LoopState::Idle
             }
             _ => LoopState::Running,
         }

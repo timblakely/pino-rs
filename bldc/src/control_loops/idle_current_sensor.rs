@@ -1,4 +1,4 @@
-use super::{LoopState, ControlHardware, Commutate, SensorState};
+use super::{Commutate, ControlHardware, LoopState, SensorState};
 use crate::{
     comms::fdcan::{FdcanMessage, IncomingFdcanFrame},
     current_sensing::PhaseCurrents,
@@ -32,6 +32,7 @@ impl IdleCurrentSensor {
 impl Commutate for IdleCurrentSensor {
     fn commutate(
         &mut self,
+        _loop_state: LoopState,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
     ) -> LoopState {
@@ -40,7 +41,7 @@ impl Commutate for IdleCurrentSensor {
         self.sample += current_sensor.sample();
 
         match self.loop_count {
-            x if x >= self.total_counts => LoopState::Finished,
+            x if x >= self.total_counts => LoopState::Idle,
             _ => LoopState::Running,
         }
     }

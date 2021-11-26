@@ -1,4 +1,4 @@
-use super::{LoopState, ControlHardware, Commutate, SensorState};
+use super::{Commutate, ControlHardware, LoopState, SensorState};
 use crate::{
     foc::{DQCurrents, FieldOrientedControlImpl},
     led::Led,
@@ -40,6 +40,7 @@ impl TorqueControl {
 impl Commutate for TorqueControl {
     fn commutate(
         &mut self,
+        _loop_state: LoopState,
         _sensor_state: &SensorState,
         hardware: &mut ControlHardware,
     ) -> LoopState {

@@ -6,7 +6,7 @@ use crate::{
     util::buffered_state::{BufferedState, StateReader, StateWriter},
 };
 
-use super::{LoopState, Commutate, SensorState};
+use super::{Commutate, LoopState, SensorState};
 
 const GEAR_RATIO: f32 = 6.0;
 const DT: f32 = 1. / 40_000.;
@@ -70,6 +70,7 @@ impl PositionVelocity {
 impl Commutate for PositionVelocity {
     fn commutate(
         &mut self,
+        _loop_state: LoopState,
         _sensor_state: &SensorState,
         hardware: &mut super::ControlHardware,
     ) -> LoopState {
