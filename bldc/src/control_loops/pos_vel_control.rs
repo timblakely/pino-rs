@@ -1,4 +1,7 @@
-use third_party::m4vga_rs::util::spin_lock::SpinLock;
+use third_party::{
+    ang::{AbsoluteDist, Angle},
+    m4vga_rs::util::spin_lock::SpinLock,
+};
 
 use crate::{
     foc::FieldOrientedControlImpl,
@@ -78,15 +81,20 @@ impl Commutate for PositionVelocity {
             None => return LoopState::Running,
             Some(state) => state,
         };
-        let mech_angle = encoder_state.angle_multiturn.in_radians();
+        let mech_angle =
+            Angle::Radians(encoder_state.angle_multiturn.in_radians() / GEAR_RATIO).normalized();
         let mech_velocity = encoder_state.velocity.in_radians();
 
         let commands = self.commands.read();
 
+        let theta_diff = Angle::Radians(commands.position)
+            .normalized()
+            .abs_dist(mech_angle);
+
         let torque_desired = match loop_state {
             LoopState::Shutdown => 0.,
             _ => {
-                commands.stiffness_gain * (commands.position - mech_angle)
+                commands.stiffness_gain * (theta_diff.in_radians())
                     + commands.damping_gain * (commands.velocity - mech_velocity)
             }
         };
@@ -103,7 +111,7 @@ impl Commutate for PositionVelocity {
             DT,
         );
         hardware.pwm.set_voltages(v_bus, phase_voltages);
-        // If we're shutting down, wait until the mechanical angle is zero before we indicate we're
+        // If we're shutting down, wait until the mechanical speed is zero before we indicate we're
         // idle.
         match loop_state {
             LoopState::Shutdown => match mech_velocity {
