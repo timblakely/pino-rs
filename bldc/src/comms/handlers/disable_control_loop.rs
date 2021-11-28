@@ -1,10 +1,6 @@
-use crate::{
-    comms::{
-        fdcan::FdcanMessage,
-        messages::{FdcanID, MessageID},
-    },
-    control_loops::torque_control::TorqueControl,
-    foc::DQCurrents,
+use crate::comms::{
+    fdcan::FdcanMessage,
+    messages::{FdcanID, MessageID},
 };
 
 use super::HandlesMessage;

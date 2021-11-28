@@ -141,24 +141,24 @@ impl PwmOutput {
         tim1.rcr.write(|w| unsafe { w.rep().bits(1) });
 
         // Set ccr values to 0 for all three channels.
-        tim1.ccr1.write(|w| w.ccr1().bits(0));
-        tim1.ccr2.write(|w| w.ccr2().bits(0));
-        tim1.ccr3.write(|w| w.ccr3().bits(0));
+        tim1.ccr1.write(|w| w.ccr().bits(0));
+        tim1.ccr2.write(|w| w.ccr().bits(0));
+        tim1.ccr3.write(|w| w.ccr().bits(0));
 
         // Set ch5 to PWM mode and enable it.
-        // Safety: Upstream: needs enum values. PWM mode 1 is 0110.
+        // PWM mode 1 is 0110, which is spread out over two separate contiguous bit ranges.
         tim1.ccmr3_output
-            .modify(|_, w| unsafe { w.oc5m().bits(110).oc5m_bit3().bits(0) });
+            .modify(|_, w| w.oc5m().bits(110).oc5m_3().bit(false));
 
         // Configure channels 1-3 to be logical AND'd with channel 5;
-        tim1.ccr5.modify(|_, w| unsafe {
+        tim1.ccr5.modify(|_, w| {
             w.gc5c1()
                 .set_bit()
                 .gc5c2()
                 .set_bit()
                 .gc5c3()
                 .set_bit()
-                .ccr5()
+                .ccr()
                 .bits(2083)
         });
         // Set channel 4 to trigger _just_ before the midway point.
@@ -173,13 +173,13 @@ impl PwmOutput {
         // Set PWM values
         self.timer
             .ccr1
-            .write(|w| w.ccr1().bits((pwms.a * 2125.) as u16));
+            .write(|w| w.ccr().bits((pwms.a * 2125.) as u16));
         self.timer
             .ccr2
-            .write(|w| w.ccr2().bits((pwms.b * 2125.) as u16));
+            .write(|w| w.ccr().bits((pwms.b * 2125.) as u16));
         self.timer
             .ccr3
-            .write(|w| w.ccr3().bits((pwms.c * 2125.) as u16));
+            .write(|w| w.ccr().bits((pwms.c * 2125.) as u16));
     }
 
     pub fn set_voltages(&mut self, v_bus: f32, voltages: PhaseVoltages) {
@@ -188,7 +188,7 @@ impl PwmOutput {
 
     // TODO(blakely): Don't expose ccr here.
     pub fn set_sample_ccr(&mut self, ccr: u16) {
-        self.timer.ccr4.write(|w| w.ccr4().bits(ccr));
+        self.timer.ccr4.write(|w| w.ccr().bits(ccr));
     }
 
     pub fn reset_current_sample(&mut self) {
@@ -198,8 +198,7 @@ impl PwmOutput {
     pub fn reset_deadtime(&mut self) {
         // TODO(blakely): Set this CCR to a logical safe PWM duty (min deadtime 400ns = 98.4% duty
         // cycle at 40kHz)
-        // Safety: Upstream: needs range to be explicitly set for safety.
-        self.timer.ccr5.write(|w| unsafe { w.ccr5().bits(2083) });
+        self.timer.ccr5.write(|w| w.ccr().bits(2083));
     }
 
     pub fn enable_loop(&mut self) {

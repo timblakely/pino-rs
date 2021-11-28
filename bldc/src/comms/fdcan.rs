@@ -10,7 +10,7 @@ use extended_filter::{ExtendedFilterMode, ExtendedFilterType};
 use ringbuffer::RingBufferRead;
 use ringbuffer::RingBufferWrite;
 use static_assertions::const_assert;
-use stm32g4::stm32g474::{self as device, fdcan::cccr::INIT_A, interrupt};
+use stm32g4::stm32g474::{self as device, interrupt};
 use third_party::m4vga_rs::util::armv7m::clear_pending_irq;
 use third_party::m4vga_rs::util::{spin_lock::SpinLock, sync};
 
@@ -110,7 +110,7 @@ pub fn take<'a>(fdcan: device::FDCAN1) -> Fdcan<Init> {
     // Enter init mode.
     fdcan.cccr.modify(|_, w| w.init().init());
     // Block until we know we're in init mode.
-    block_while! { fdcan.cccr.read().init() == INIT_A::RUN };
+    block_while! { fdcan.cccr.read().init().is_run() };
     // Enable config writing
     fdcan.cccr.modify(|_, w| w.cce().readwrite());
     Fdcan {
@@ -274,7 +274,7 @@ impl Fdcan<Init> {
             // Enter run mode.
             shared.fdcan.cccr.modify(|_, w| w.init().run());
             // Block until we know we're running.
-            block_until! { shared.fdcan.cccr.read().init() == INIT_A::RUN };
+            block_until! { shared.fdcan.cccr.read().init().is_run() };
         });
         Fdcan {
             mode_state: Running,

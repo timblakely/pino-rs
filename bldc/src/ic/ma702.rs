@@ -245,9 +245,7 @@ impl Ma702<Ready> {
         // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 3 is well
         // within range.
         tim3.psc.write(|w| w.psc().bits(3));
-        // Safety: Upstream: This should have a proper range of 0-65535 in stm32-rs. 850 is within
-        // range.
-        tim3.arr.write(|w| unsafe { w.arr().bits(850) });
+        tim3.arr.write(|w| w.arr().bits(850));
         // Kick off tim3 to start the stream.
         tim3.cr1.modify(|_, w| w.cen().set_bit());
     }
