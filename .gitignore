@@ -8,3 +8,6 @@
 !.vscode/launch.json
 !.vscode/tasks.json
 !.vscode/extensions.json
+
+# Kicad backups
+v2/v2-backups/*
